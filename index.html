@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Ads Dashboard</title>
+    <!-- Tải Tailwind PostCSS từ static -->
+    <link href="static/css/styles.css" rel="stylesheet">
+    <!-- Tải Chart.js (thư viện vẽ biểu đồ) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
+    <!-- Tải Feather Icons (thư viện icon) -->
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <style>
+        /* Sử dụng font Inter cho trang web */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="flex h-screen">
+        <!-- Sidebar (Menu bên trái) -->
+        <aside class="w-64 bg-white shadow-md flex flex-col">
+            <div class="p-6 text-2xl font-bold text-blue-600 border-b">
+                Meta Dashboard
+            </div>
+            <nav class="flex-1 p-4 space-y-2">
+                <a href="#" class="flex items-center px-4 py-2 text-gray-700 bg-gray-200 rounded-lg font-medium">
+                    <i data-feather="home" class="w-5 h-5 mr-3"></i>
+                    Tổng quan
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <i data-feather="bar-chart-2" class="w-5 h-5 mr-3"></i>
+                    Chiến dịch
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <i data-feather="users" class="w-5 h-5 mr-3"></i>
+                    Đối tượng
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <i data-feather="file-text" class="w-5 h-5 mr-3"></i>
+                    Báo cáo
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <i data-feather="settings" class="w-5 h-5 mr-3"></i>
+                    Cài đặt
+                </a>
+            </nav>
+            <div class="p-4 border-t">
+                <div class="flex items-center">
+                    <img src="https://placehold.co/40x40/E0E7FF/4F46E5?text=AV" alt="Avatar" class="rounded-full">
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-800">Công ty ABC</p>
+                        <p class="text-xs text-gray-500">Quản trị viên</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content (Nội dung chính) -->
+        <main class="flex-1 overflow-y-auto p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6">Dashboard Tổng quan</h1>
+
+            <!-- Hàng 1: Thẻ KPI (Key Performance Indicators) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Thẻ 1: Tổng chi tiêu -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-500">Tổng chi tiêu</span>
+                        <i data-feather="dollar-sign" class="text-green-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">150.8M đ</p>
+                    <p class="text-sm text-green-600 mt-1 flex items-center">
+                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                        <span>+12.5%</span>
+                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    </p>
+                </div>
+                <!-- Thẻ 2: Lượt hiển thị -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-500">Lượt hiển thị</span>
+                        <i data-feather="eye" class="text-blue-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">12,850,000</p>
+                    <p class="text-sm text-green-600 mt-1 flex items-center">
+                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                        <span>+8.2%</span>
+                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    </p>
+                </div>
+                <!-- Thẻ 3: CTR (Click-Through Rate) -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-500">CTR</span>
+                        <i data-feather="mouse-pointer" class="text-yellow-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">2.15%</p>
+                    <p class="text-sm text-red-600 mt-1 flex items-center">
+                        <i data-feather="arrow-down" class="w-4 h-4 mr-1"></i>
+                        <span>-0.5%</span>
+                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    </p>
+                </div>
+                <!-- Thẻ 4: Chuyển đổi -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-500">Lượt chuyển đổi</span>
+                        <i data-feather="check-circle" class="text-purple-500"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">1,200</p>
+                    <p class="text-sm text-green-600 mt-1 flex items-center">
+                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                        <span>+20%</span>
+                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Hàng 2: Biểu đồ -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <!-- Biểu đồ đường: Chi tiêu theo thời gian -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Chi tiêu & Hiển thị theo thời gian</h2>
+                    <canvas id="spendTrendChart"></canvas>
+                </div>
+                <!-- Biểu đồ tròn: Phân bổ theo nền tảng -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ theo Nền tảng</h2>
+                    <canvas id="platformChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Hàng 3: Bảng dữ liệu -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Hiệu suất chiến dịch hàng đầu</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-max text-left">
+                        <thead>
+                            <tr class="border-b bg-gray-50 text-gray-600 uppercase text-sm">
+                                <th class="py-3 px-4 font-medium">Chiến dịch</th>
+                                <th class="py-3 px-4 font-medium">Trạng thái</th>
+                                <th class="py-3 px-4 font-medium">Chi tiêu</th>
+                                <th class="py-3 px-4 font-medium">Hiển thị</th>
+                                <th class="py-3 px-4 font-medium">Chuyển đổi</th>
+                                <th class="py-3 px-4 font-medium">CPA</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-700">
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="py-3 px-4 font-medium">Chiến dịch Mùa hè 2024</td>
+                                <td class="py-3 px-4">
+                                    <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Hoạt động</span>
+                                </td>
+                                <td class="py-3 px-4">45.2M đ</td>
+                                <td class="py-3 px-4">3,200,500</td>
+                                <td class="py-3 px-4">450</td>
+                                <td class="py-3 px-4">100,444 đ</td>
+                            </tr>
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="py-3 px-4 font-medium">Khuyến mãi T10</td>
+                                <td class="py-3 px-4">
+                                    <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Hoạt động</span>
+                                </td>
+                                <td class="py-3 px-4">30.1M đ</td>
+                                <td class="py-3 px-4">2,100,000</td>
+                                <td class="py-3 px-4">310</td>
+                                <td class="py-3 px-4">97,096 đ</td>
+                            </tr>
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="py-3 px-4 font-medium">Ra mắt sản phẩm mới</td>
+                                <td class="py-3 px-4">
+                                    <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Tạm dừng</span>
+                                </td>
+                                <td class="py-3 px-4">25.0M đ</td>
+                                <td class="py-3 px-4">1,500,000</td>
+                                <td class="py-3 px-4">200</td>
+                                <td class="py-3 px-4">125,000 đ</td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="py-3 px-4 font-medium">Chiến dịch Awareness Q4</td>
+                                <td class="py-3 px-4">
+                                    <span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Đã kết thúc</span>
+                                </td>
+                                <td class="py-3 px-4">50.5M đ</td>
+                                <td class="py-3 px-4">6,050,000</td>
+                                <td class="py-3 px-4">240</td>
+                                <td class="py-3 px-4">210,416 đ</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Kích hoạt Feather Icons
+        feather.replace();
+
+        // --- Dữ liệu giả (Mock Data) cho biểu đồ ---
+
+        // Dữ liệu Biểu đồ đường (Chi tiêu)
+        const spendTrendData = {
+            labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10'],
+            datasets: [
+                {
+                    label: 'Chi tiêu (Triệu đ)',
+                    data: [12, 19, 15, 22, 18, 25, 20, 30, 28, 35],
+                    borderColor: 'rgb(59, 130, 246)', // blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Hiển thị (Triệu)',
+                    data: [1.5, 2.2, 1.8, 2.8, 2.0, 3.0, 2.5, 3.8, 3.5, 4.5],
+                    borderColor: 'rgb(16, 185, 129)', // emerald-500
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    yAxisID: 'y1',
+                }
+            ]
+        };
+
+        // Dữ liệu Biểu đồ tròn (Nền tảng)
+        const platformData = {
+            labels: ['Facebook Feed', 'Instagram Feed', 'Instagram Stories', 'Messenger'],
+            datasets: [{
+                label: 'Phân bổ chi tiêu',
+                data: [45, 25, 20, 10],
+                backgroundColor: [
+                    'rgb(59, 130, 246)',  // blue-500
+                    'rgb(236, 72, 153)',  // pink-500
+                    'rgb(139, 92, 246)',  // violet-500
+                    'rgb(22, 163, 74)'   // green-600
+                ],
+                hoverOffset: 4
+            }]
+        };
+
+        // --- Khởi tạo Chart.js ---
+
+        // Khởi tạo Biểu đồ đường
+        const ctxSpend = document.getElementById('spendTrendChart').getContext('2d');
+        new Chart(ctxSpend, {
+            type: 'line',
+            data: spendTrendData,
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Chi tiêu (Triệu đ)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Hiển thị (Triệu)'
+                        },
+                        grid: {
+                            drawOnChartArea: false, // Chỉ hiển thị lưới cho trục y
+                        },
+                    },
+                }
+            }
+        });
+
+        // Khởi tạo Biểu đồ tròn
+        const ctxPlatform = document.getElementById('platformChart').getContext('2d');
+        new Chart(ctxPlatform, {
+            type: 'doughnut',
+            data: platformData,
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                }
+            }
+        });
+    </script>
+</body>
+</html>
