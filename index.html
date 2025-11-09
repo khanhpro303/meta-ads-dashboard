@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meta Ads Dashboard</title>
-    <!-- Tải Tailwind PostCSS từ static -->
     <link href="static/css/styles.css" rel="stylesheet">
-    <!-- Tải Chart.js (thư viện vẽ biểu đồ) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
-    <!-- Tải Feather Icons (thư viện icon) -->
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
     <style>
         /* Sử dụng font Inter cho trang web */
@@ -16,12 +13,16 @@
         body {
             font-family: 'Inter', sans-serif;
         }
+        /* Ẩn mũi tên mặc định của input[type=date] */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            display: none;
+            -webkit-appearance: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
 
     <div class="flex h-screen">
-        <!-- Sidebar (Menu bên trái) -->
         <aside class="w-64 bg-white shadow-md flex flex-col">
             <div class="p-6 text-2xl font-bold text-blue-600 border-b">
                 Meta Dashboard
@@ -59,13 +60,82 @@
             </div>
         </aside>
 
-        <!-- Main Content (Nội dung chính) -->
         <main class="flex-1 overflow-y-auto p-8">
             <h1 class="text-3xl font-bold text-gray-900 mb-6">Dashboard Tổng quan</h1>
 
-            <!-- Hàng 1: Thẻ KPI (Key Performance Indicators) -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                
+                <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 flex items-center mb-4 md:mb-0">
+                        <i data-feather="filter" class="w-5 h-5 mr-3 text-blue-600"></i>
+                        Bộ lọc Báo cáo
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="btn-download-data" class="flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all">
+                            <i data-feather="download" class="w-4 h-4 mr-2"></i>
+                            <span>Tải Dữ liệu</span>
+                        </button>
+                        <button id="btn-apply-filters" class="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all">
+                            <i data-feather="check" class="w-4 h-4 mr-2"></i>
+                            <span>Áp dụng</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="border-b border-gray-200 mb-6"></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div>
+                        <label for="filter-time" class="block text-sm font-medium text-gray-700 mb-1">Thời gian</label>
+                        <select id="filter-time" name="filter-time" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                            <option value="today">Hôm nay</option>
+                            <option value="last_30_days" selected>30 ngày trước</option>
+                            <option value="last_90_days">90 ngày trước</option>
+                            <option value="custom">Tùy chỉnh...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-brand" class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                        <select id="filter-brand" name="filter-brand" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                            <option value="all">Tất cả Brand</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label for="filter-campaigns" class="block text-sm font-medium text-gray-700 mb-1">Campaigns</label>
+                        <select id="filter-campaigns" name="filter-campaigns" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                            <option value="all">Tất cả Campaigns</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label for="filter-adsets" class="block text-sm font-medium text-gray-700 mb-1">Adsets</label>
+                        <select id="filter-adsets" name="filter-adsets" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                            <option value="all">Tất cả Adsets</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label for="filter-ads" class="block text-sm font-medium text-gray-700 mb-1">Ads</label>
+                        <select id="filter-ads" name="filter-ads" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                            <option value="all">Tất cả Ads</option>
+                            </select>
+                    </div>
+                </div>
+                
+                <div id="custom-date-range" class="hidden mt-4">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div class="md:col-start-1">
+                            <label for="date-from" class="block text-sm font-medium text-gray-700 mb-1">Từ ngày</label>
+                            <!-- === THAY ĐỔI: Chuyển lại thành input dạng lịch === -->
+                            <input type="date" id="date-from" name="date-from" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div class="md:col-start-2">
+                            <label for="date-to" class="block text-sm font-medium text-gray-700 mb-1">Đến ngày</label>
+                            <!-- === THAY ĐỔI: Chuyển lại thành input dạng lịch === -->
+                            <input type="date" id="date-to" name="date-to" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <!-- Thẻ 1: Tổng chi tiêu -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium text-gray-500">Tổng chi tiêu</span>
@@ -78,7 +148,6 @@
                         <span class="text-gray-500 ml-1">so với kỳ trước</span>
                     </p>
                 </div>
-                <!-- Thẻ 2: Lượt hiển thị -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium text-gray-500">Lượt hiển thị</span>
@@ -91,7 +160,6 @@
                         <span class="text-gray-500 ml-1">so với kỳ trước</span>
                     </p>
                 </div>
-                <!-- Thẻ 3: CTR (Click-Through Rate) -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium text-gray-500">CTR</span>
@@ -104,7 +172,6 @@
                         <span class="text-gray-500 ml-1">so với kỳ trước</span>
                     </p>
                 </div>
-                <!-- Thẻ 4: Chuyển đổi -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium text-gray-500">Lượt chuyển đổi</span>
@@ -119,21 +186,155 @@
                 </div>
             </div>
 
-            <!-- Hàng 2: Biểu đồ -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                <!-- Biểu đồ đường: Chi tiêu theo thời gian -->
                 <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4">Chi tiêu & Hiển thị theo thời gian</h2>
                     <canvas id="spendTrendChart"></canvas>
                 </div>
-                <!-- Biểu đồ tròn: Phân bổ theo nền tảng -->
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ theo Nền tảng</h2>
                     <canvas id="platformChart"></canvas>
                 </div>
             </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                
+                <div class="bg-white p-6 rounded-lg shadow-md flex flex-col">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Hành trình Khách hàng</h2>
+                    
+                    <div class="text-center mb-4">
+                        <span class="text-sm font-medium text-gray-500">Đã chi tiêu (Total Cost)</span>
+                        <p class="text-3xl font-bold text-gray-900">77,15</p>
+                    </div>
 
-            <!-- Hàng 3: Bảng dữ liệu -->
+                    <div class="flex-1 flex flex-col justify-center">
+                        <div class="space-y-1 text-center">
+                            <div class="relative bg-blue-600 text-white p-3 rounded-t-lg w-full mx-auto">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="font-medium">CPM: 1,8</span>
+                                    <span class="font-semibold">Hiển thị</span>
+                                </div>
+                                <div class="text-xl font-bold">Impressions</div>
+                                <div class="text-2xl font-bold">42.169</div>
+                            </div>
+                            <div class="relative bg-teal-500 text-white p-3 w-[90%] mx-auto">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="font-medium">Cost/Eng: 0,07</span>
+                                    <span class="font-semibold">Tương tác</span>
+                                </div>
+                                <div class="text-lg font-bold">Post Engagement</div>
+                                <div class="text-2xl font-bold">1.099</div>
+                            </div>
+                            <div class="relative bg-yellow-400 text-gray-800 p-3 w-[80%] mx-auto">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="font-medium">CPC: 0,0</span>
+                                    <span class="font-semibold">Quan tâm</span>
+                                </div>
+                                <div class="text-lg font-bold">Clicks</div>
+                                <div class="text-2xl font-bold">1.677</div>
+                            </div>
+                            <div class="relative bg-red-500 text-white p-3 rounded-b-lg w-[70%] mx-auto">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="font-medium">Cost/Msg: 4,8</span>
+                                    <span class="font-semibold">Chuyển đổi</span>
+                                </div>
+                                <div class="text-lg font-bold">Messaging</div>
+                                <div class="text-2xl font-bold">16</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="space-y-6">
+                        
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Nhóm hiển thị</h3>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt hiển thị</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">42.169</p>
+                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                                        <span>+10.2%</span>
+                                    </p>
+                                </div>
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt tiếp cận</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">35.800</p>
+                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                                        <span>+8.5%</span>
+                                    </p>
+                                </div>
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">%CTR (tất cả)</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">3,98%</p>
+                                    <p class="text-sm text-red-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-down" class="w-4 h-4 mr-1"></i>
+                                        <span>-0.2%</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border-b border-gray-200"></div>
+
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Nhóm chỉ số tương tác</h3>
+                            <div class="grid grid-cols-2 gap-4"> <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt tương tác</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">1.099</p>
+                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                                        <span>+120</span>
+                                    </p>
+                                </div>
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt click vào liên kết</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">1.677</p>
+                                    <p class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border-b border-gray-200"></div>
+
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Nhóm tỉ lệ chuyển đổi</h3>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt bắt đầu chat</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">16</p>
+                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                                        <span>+2</span>
+                                    </p>
+                                </div>
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Lượt mua (Meta)</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">5</p>
+                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
+                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
+                                        <span>+1</span>
+                                    </p>
+                                </div>
+                                <div class="text-center">
+                                    <span class="text-sm font-medium text-gray-500">Giá trị CĐ (Mua)</span>
+                                    <p class="text-2xl font-bold text-gray-900 mt-1">2.5M đ</p>
+                                    <p class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div> </div>
+
+            </div>
+
             <div class="bg-white p-6 rounded-lg shadow-md">
                 <h2 class="text-xl font-semibold text-gray-800 mb-4">Hiệu suất chiến dịch hàng đầu</h2>
                 <div class="overflow-x-auto">
@@ -197,6 +398,25 @@
     </div>
 
     <script>
+        // === LOGIC MỚI CHO BỘ LỌC NGÀY ===
+        const timeFilter = document.getElementById('filter-time');
+        const customDateRange = document.getElementById('custom-date-range');
+
+        // Kiểm tra ngay khi tải trang (phòng trường hợp trình duyệt nhớ lựa chọn 'custom')
+        if (timeFilter.value === 'custom') {
+            customDateRange.classList.remove('hidden');
+        }
+
+        // Thêm event listener
+        timeFilter.addEventListener('change', function() {
+            if (this.value === 'custom') {
+                customDateRange.classList.remove('hidden');
+            } else {
+                customDateRange.classList.add('hidden');
+            }
+        });
+        // === KẾT THÚC LOGIC MỚI ===
+
         // Kích hoạt Feather Icons
         feather.replace();
 
@@ -227,7 +447,7 @@
             ]
         };
 
-        // Dữ liệu Biểu đồ tròn (Nền tảng)
+        // Dữ liệu Biểu đồ tròn (Nền tảng) - (Giữ nguyên)
         const platformData = {
             labels: ['Facebook Feed', 'Instagram Feed', 'Instagram Stories', 'Messenger'],
             datasets: [{
@@ -282,7 +502,7 @@
             }
         });
 
-        // Khởi tạo Biểu đồ tròn
+        // Khởi tạo Biểu đồ tròn (Giữ nguyên)
         const ctxPlatform = document.getElementById('platformChart').getContext('2d');
         new Chart(ctxPlatform, {
             type: 'doughnut',
