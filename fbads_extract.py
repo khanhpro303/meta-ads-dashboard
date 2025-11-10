@@ -203,9 +203,6 @@ class FacebookAdsExtractor:
                 break
         
         logger.info(f"Hoàn tất! Lấy được tổng cộng {len(all_accounts)} tài khoản quảng cáo.")
-        # Cập nhật lại danh sách account_ids trong class
-        self.account_ids = [acc['id'] for acc in all_accounts]
-        self.account_names = [acc['name'] for acc in all_accounts]
         return all_accounts
 
     def get_campaigns_for_account(self, account_id: str, start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -220,7 +217,7 @@ class FacebookAdsExtractor:
         if date_preset and date_preset in DATE_PRESET:
             params = {
                 'access_token': self.access_token,
-                'fields': 'campaign_id,campaign_name,created_time',
+                'fields': 'account_id,campaign_id,campaign_name,created_time,objective,status',
                 'limit': 100,
                 'date_preset': date_preset,
                 'level': 'campaign'
@@ -228,7 +225,7 @@ class FacebookAdsExtractor:
         else:
             params = {
                 'access_token': self.access_token,
-                'fields': 'campaign_id,campaign_name,created_time',
+                'fields': 'campaign_id,campaign_name,created_time,objective,status,account_id',
                 'limit': 100,
                 'time_range': json.dumps({
                     'since': start_date,
@@ -489,8 +486,9 @@ class FacebookAdsExtractor:
 
     def get_all_insights(self, account_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Lấy tất cả dữ liệu insights cho tài khoản quảng cáo,
-        bao gồm chiến dịch, nhóm quảng cáo và quảng cáo.
+        Lấy tất cả dữ liệu insights cho tài khoản quảng cáo, dùng để làm database tổng hợp.,
+        bao gồm chiến dịch, nhóm quảng cáo và quảng cáo, chia theo nền tảng và vị trí hiển thị.
+        Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date
         """
         logger.info(f"Lấy tất cả dữ liệu insights cho tài khoản {account_id}...")
         all_insights = []
