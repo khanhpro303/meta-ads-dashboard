@@ -7,6 +7,7 @@ from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import pytz
+from fbads_extract import FacebookAdsExtractor
 
 # Tải biến môi trường từ file .env
 load_dotenv()
@@ -445,8 +446,8 @@ class DatabaseManager:
             session.rollback()
         finally:
             session.close()
-    
-    def _get_or_create_dim_records(self, session, model, column_name: str, values: Set[str]) -> Dict[str, int]:
+
+    def _get_or_create_dim_records(self, session, model, column_name: str, values: Set[str], pk_name: str) -> Dict[str, int]:
         """
         Hàm helper chung để lấy hoặc tạo các bản ghi trong bảng dimension.
         Trả về một dictionary map từ tên -> id.
@@ -456,7 +457,7 @@ class DatabaseManager:
         
         # 1. Lấy các bản ghi đã tồn tại
         existing_records = session.query(model).filter(getattr(model, column_name).in_(values)).all()
-        mapping = {getattr(r, column_name): r.id for r in existing_records}
+        mapping = {getattr(r, column_name): getattr(r, pk_name) for r in existing_records}
         
         # 2. Xác định các giá trị mới cần insert
         new_values = values - set(mapping.keys())
@@ -470,12 +471,11 @@ class DatabaseManager:
             
             # Cập nhật lại mapping với các bản ghi vừa tạo
             for record_data in new_records_data:
-                mapping[record_data[column_name]] = record_data['id']
+                mapping[record_data[column_name]] = record_data[pk_name]
             logger.info(f"Đã tạo {len(new_values)} bản ghi mới trong bảng {model.__tablename__}.")
             
         return mapping
 
-    # === VIẾT LẠI: HÀM UPSERT CHO FACT TABLE (PHẦN QUAN TRỌNG NHẤT) ===
     def upsert_performance_data(self, insights_data: List[Dict[str, Any]]):
         """
         Thực hiện 'UPSERT' cho bảng fact_performance.
@@ -542,6 +542,8 @@ class DatabaseManager:
                     'spend': float(record.get('spend', 0.0)),
                     'impressions': int(record.get('impressions', 0)),
                     'clicks': int(record.get('clicks', 0)),
+                    'ctr': float(record.get('ctr', 0.0)),
+                    'cpm': float(record.get('cpm', 0.0)),
                     'reach': int(record.get('reach', 0)),
                     'frequency': float(record.get('frequency', 0.0)),
                     'messages_started': messages_started,
@@ -566,6 +568,8 @@ class DatabaseManager:
                     'spend': stmt.excluded.spend,
                     'impressions': stmt.excluded.impressions,
                     'clicks': stmt.excluded.clicks,
+                    'ctr': stmt.excluded.ctr,
+                    'cpm': stmt.excluded.cpm,
                     'reach': stmt.excluded.reach,
                     'frequency': stmt.excluded.frequency,
                     'messages_started': stmt.excluded.messages_started,
@@ -585,3 +589,94 @@ class DatabaseManager:
             session.rollback()
         finally:
             session.close()
+    
+    def refresh_data(self, start_date: str = None, end_date: str = None, date_preset: str = None):
+        """
+        Hàm chính để điều phối toàn bộ quy trình ETL:
+        1. Lấy dữ liệu mới từ Meta Ads API.
+        2. Cập nhật các bảng Dimension.
+        3. Cập nhật bảng Fact.
+        """
+        logger.info("===== BẮT ĐẦU QUY TRÌNH LÀM MỚI DỮ LIỆU =====")
+        extractor = FacebookAdsExtractor()
+
+        try:
+            # --- BƯỚC 1: LẤY VÀ CẬP NHẬT CÁC BẢNG DIMENSION CƠ BẢN ---
+            logger.info("Bước 1: Lấy và cập nhật danh sách tài khoản quảng cáo...")
+            accounts = extractor.get_all_ad_accounts()
+            self.upsert_ad_accounts(accounts)
+            logger.info("=> Hoàn thành cập nhật tài khoản.")
+
+            all_campaigns = []
+            all_adsets = []
+            all_ads = []
+            all_insights = []
+
+            for account in accounts:
+                account_id = account['id']
+                logger.info(f"--- Đang xử lý cho tài khoản: {account['name']} ({account_id}) ---")
+
+                logger.info("Lấy dữ liệu chiến dịch...")
+                campaigns = extractor.get_campaigns_for_account(account_id=account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                if campaigns:
+                    all_campaigns.extend(campaigns)
+                    campaign_ids = [c['campaign_id'] for c in campaigns]
+
+                    logger.info("Lấy dữ liệu nhóm quảng cáo...")
+                    adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_ids=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                    if adsets:
+                        all_adsets.extend(adsets)
+                        adset_ids = [a['adset_id'] for a in adsets]
+
+                        logger.info("Lấy dữ liệu quảng cáo...")
+                        ads = extractor.get_ads_for_adsets(account_id=account_id, adset_ids=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                        if ads:
+                            all_ads.extend(ads)
+
+            # Upsert hàng loạt vào các bảng Dimension
+            logger.info("Bước 2: Cập nhật các bảng Dimension (Campaign, Adset, Ad)...")
+            self.upsert_campaigns(all_campaigns)
+            self.upsert_adsets(all_adsets)
+            self.upsert_ads(all_ads)
+            logger.info("=> Hoàn thành cập nhật Dimension.")
+
+            # --- BƯỚC 2: LẤY VÀ CẬP NHẬT BẢNG FACT ---
+            logger.info(f"Bước 3: Lấy dữ liệu Insights với khoảng thời gian (preset: {date_preset} hoặc start: {start_date}, end: {end_date})...")
+            for account in accounts:
+                account_id = account['id']
+                logger.info(f"Lấy Insights cho tài khoản: {account_id}")
+                insights = extractor.get_all_insights(
+                    account_id=account_id,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if insights:
+                    all_insights.extend(insights)
+            
+            if not all_insights:
+                logger.warning("Không có dữ liệu insights nào được trả về từ API. Kết thúc quy trình.")
+                return
+
+            logger.info(f"Tổng cộng có {len(all_insights)} bản ghi insights được lấy về.")
+
+            # Cập nhật DimDate
+            logger.info("Bước 4: Cập nhật bảng DimDate...")
+            min_date_str = min(rec['date_start'] for rec in all_insights)
+            max_date_str = max(rec['date_start'] for rec in all_insights)
+            min_date = datetime.fromisoformat(min_date_str)
+            max_date = datetime.fromisoformat(max_date_str)
+            self.upsert_dates(min_date, max_date)
+            logger.info("=> Hoàn thành cập nhật DimDate.")
+
+            # Cập nhật FactPerformance
+            logger.info("Bước 5: Cập nhật bảng FactPerformance...")
+            self.upsert_performance_data(all_insights)
+            logger.info("=> Hoàn thành cập nhật FactPerformance.")
+
+            logger.info("===== KẾT THÚC QUY TRÌNH LÀM MỚI DỮ LIỆU THÀNH CÔNG =====")
+
+        except Exception as e:
+            logger.error(f"LỖI NGHIÊM TRỌNG trong quá trình làm mới dữ liệu: {e}", exc_info=True)
+            # Ném lại lỗi để endpoint có thể bắt và trả về thông báo lỗi
+            raise
