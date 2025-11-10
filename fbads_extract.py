@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
+
 def format_date_with_timezone(date_str: str, timezone_str: str = 'Asia/Ho_Chi_Minh') -> str:
     """
     Chuyển một chuỗi ngày (ví dụ: '2025-10-01') thành định dạng ISO 8601
@@ -40,7 +42,7 @@ class FacebookAdsExtractor:
     def __init__(self):
         load_dotenv()
         self.access_token = os.getenv("SECRET_KEY")
-        self.base_url = os.getenv("BASE_URL", "https://graph.facebook.com/v19.0")
+        self.base_url = os.getenv("BASE_URL", "https://graph.facebook.com/v24.0")
         self.account_ids = []
         self.account_names = []
         if not self.access_token:
@@ -205,24 +207,34 @@ class FacebookAdsExtractor:
         self.account_names = [acc['name'] for acc in all_accounts]
         return all_accounts
 
-    def get_campaigns_for_account(self, account_id: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    def get_campaigns_for_account(self, account_id: str, start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Lấy tất cả chiến dịch quảng cáo cho một tài khoản cụ thể trong một khoảng thời gian.
+        Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
         logger.info(f"Lấy chiến dịch cho tài khoản {account_id} từ ngày {start_date} đến {end_date}...")
         campaigns = []
-        
         url = f"{self.base_url}/{account_id}/insights"
-        params = {
-            'access_token': self.access_token,
-            'fields': 'campaign_id,campaign_name,created_time',
-            'limit': 100,
-            'time_range': json.dumps({
-                'since': start_date,
-                'until': end_date
-            }),
-            'level': 'campaign'
-        }
+
+        if date_preset and date_preset in DATE_PRESET:
+            params = {
+                'access_token': self.access_token,
+                'fields': 'campaign_id,campaign_name,created_time',
+                'limit': 100,
+                'date_preset': date_preset,
+                'level': 'campaign'
+            }
+        else:
+            params = {
+                'access_token': self.access_token,
+                'fields': 'campaign_id,campaign_name,created_time',
+                'limit': 100,
+                'time_range': json.dumps({
+                    'since': start_date,
+                    'until': end_date
+                }),
+                'level': 'campaign'
+            }
         
         page_count = 0
         while url:
@@ -256,20 +268,47 @@ class FacebookAdsExtractor:
         logger.info(f"Hoàn tất! Lấy được tổng cộng {len(campaigns)} chiến dịch cho tài khoản {account_id}.")
         return campaigns
 
-    def get_adsets_for_campaign(self, campaign_id: str) -> List[Dict[str, Any]]:
+    def get_adsets_for_campaign(self, account_id: str, campaign_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Lấy tất cả adsets cho một chiến dịch cụ thể.
+        Lấy tất cả adsets cho một hoặc nhiều chiến dịch cụ thể của tài khoản QC trong một khoảng thời gian.
+        Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
-        logger.info(f"Lấy nhóm quảng cáo cho chiến dịch {campaign_id}...")
+        logger.info(f"Lấy nhóm quảng cáo cho chiến dịch của tài khoản {account_id} và nhóm campaign {campaign_id}...")
         adsets = []
+        url = f"{self.base_url}/{account_id}/insights"
 
-        url = f"{self.base_url}/{campaign_id}/adsets"
-        params = {
-            'access_token': self.access_token,
-            'fields': 'id,name,created_time,start_time,stop_time',
-            'limit': 100
-        }
+        filtering_structure = [
+            {
+                'field': 'campaign.id',
+                'operator': 'IN',
+                'value': campaign_id
+            }
+        ]
         
+        # Chuyển cấu trúc dữ liệu thành chuỗi JSON hợp lệ
+        filtering_json_string = json.dumps(filtering_structure)
+        if date_preset and date_preset in DATE_PRESET:
+            params = {
+                'level': 'adset',
+                'filtering': filtering_json_string,
+                'fields': 'adset_id,adset_name',
+                'access_token': self.access_token,
+                'limit': 100,
+                'date_preset': date_preset
+            }
+        else:
+            params = {
+                'level': 'adset',
+                'filtering': filtering_json_string,
+                'fields': 'adset_id,adset_name',
+                'access_token': self.access_token,
+                'limit': 100,
+                'time_range': json.dumps({
+                    'since': start_date,
+                    'until': end_date
+                })
+            }
+
         page_count = 0
         while url:
             try:
@@ -291,7 +330,7 @@ class FacebookAdsExtractor:
                 url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
             
             except requests.exceptions.RequestException as e:
-                logger.error(f"Lỗi khi lấy Ad Sets cho chiến dịch {campaign_id} (Trang {page_count}): {e}")
+                logger.error(f"Lỗi khi lấy Ad Sets cho chiến dịch cho tài khoản {account_id} (Trang {page_count}): {e}")
                 if e.response is not None:
                     logger.error(f"Response: {e.response.json()}")
                 break
@@ -299,22 +338,48 @@ class FacebookAdsExtractor:
                 logger.error(f"Lỗi không xác định: {e}")
                 break
 
-        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(adsets)} nhóm quảng cáo cho chiến dịch {campaign_id}.")
+        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(adsets)} nhóm quảng cáo cho chiến dịch cho tài khoản {account_id}.")
         return adsets
 
-    def get_ads_for_adset(self, adset_id: str) -> List[Dict[str, Any]]:
+    def get_ads_for_adset(self, account_id: str, adset_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Lấy tất cả quảng cáo cho một nhóm quảng cáo cụ thể.
+        Lấy tất cả quảng cáo cho một nhóm quảng cáo cụ thể thuộc một hoặc nhiều adset cụ thể của tài khoản quảng cáo trong khoảng thời gian.
+        Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
-        logger.info(f"Lấy quảng cáo cho nhóm quảng cáo {adset_id}...")
+        logger.info(f"Lấy quảng cáo cho nhóm quảng cáo {adset_id} thuộc tài khoản {account_id}...")
         ads = []
+        url = f"{self.base_url}/{account_id}/insights"
+        filtering_structure = [
+            {
+                'field': 'adset.id',
+                'operator': 'IN',
+                'value': adset_id
+            }
+        ]
+        # Chuyển cấu trúc dữ liệu thành chuỗi JSON hợp lệ
+        filtering_json_string = json.dumps(filtering_structure)
 
-        url = f"{self.base_url}/{adset_id}/ads"
-        params = {
-            'access_token': self.access_token,
-            'fields': 'id,name',
-            'limit': 100
-        }
+        if date_preset and date_preset in DATE_PRESET:
+            params = {
+                'level': 'ad',
+                'filtering': filtering_json_string,
+                'fields': 'ad_id,ad_name',
+                'access_token': self.access_token,
+                'limit': 100,
+                'date_preset': date_preset
+            }
+        else:
+            params = {
+                'level': 'ad',
+                'filtering': filtering_json_string,
+                'fields': 'ad_id,ad_name',
+                'access_token': self.access_token,
+                'limit': 100,
+                'time_range': json.dumps({
+                    'since': start_date,
+                    'until': end_date
+                })
+            }
         
         page_count = 0
         while url:
@@ -347,62 +412,105 @@ class FacebookAdsExtractor:
 
         logger.info(f"Hoàn tất! Lấy được tổng cộng {len(ads)} quảng cáo cho nhóm quảng cáo {adset_id}.")
         return ads
-    
-    def get_insights(self, campaign_id: str, start_date: str, end_date: str) -> Optional[Dict[str, Any]]:
+
+    def get_insights(self, account_id: str, campaign_id: Optional[List[str]] = None, adset_id: Optional[List[str]] = None, ad_id: Optional[List[str]] = None, date_preset: Optional[str] = 'last_7d',
+                     start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Hàm master để lấy dữ liệu thống kê cho một chiến dịch trong khoảng thời gian nhất định.
+        Lấy dữ liệu insights cho các chiều (campaigns, adsets hoặc ads) tuỳ vào input.
+        Nếu không có ID nào được cung cấp, sẽ lấy insights tổng hợp cho toàn bộ tài khoản.
         """
-        logger.info(f"Lấy số liệu thống kê cho chiến dịch {campaign_id} từ {start_date} đến {end_date}...")
-        
-        url = f"{self.base_url}/{campaign_id}/insights"
+        logger.info(f"Lấy dữ liệu insights cho tài khoản {account_id}...")
+        insights = []
+        url = f"{self.base_url}/{account_id}/insights"
+
         params = {
             'access_token': self.access_token,
-            'fields': 'impressions,clicks,spend,ctr,cpc,cpm',
-            'time_range': json.dumps({
-                'since': start_date,
-                'until': end_date
-            }),
-            'limit': 1
+            'limit': 100,
+            'fields': 'impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
         }
+
+        filtering_structure = []
+        if campaign_id:
+            filtering_structure.append({'field': 'campaign.id', 'operator': 'IN', 'value': campaign_id})
+        if adset_id:
+            filtering_structure.append({'field': 'adset.id', 'operator': 'IN', 'value': adset_id})
+        if ad_id:
+            filtering_structure.append({'field': 'ad.id', 'operator': 'IN', 'value': ad_id})
         
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            insights = data.get('data', [])
-            if insights:
-                logger.info(f"Lấy số liệu thành công cho chiến dịch {campaign_id}.")
-                return insights[0]
-            else:
-                logger.info(f"Không có số liệu nào cho chiến dịch {campaign_id}.")
-                return None
+        if filtering_structure:
+            params['filtering'] = json.dumps(filtering_structure)
+        else:
+            params['level'] = 'account'
+
+        if start_date and end_date:
+            params['time_range'] = json.dumps({'since': start_date, 'until': end_date})
+        # Chỉ sử dụng date_preset nếu không có time_range.
+        elif date_preset and date_preset in DATE_PRESET:
+            params['date_preset'] = date_preset
+
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                insights_page = data.get('data', [])
+                if not insights_page:
+                    logger.info("Không tìm thấy thêm dữ liệu insights nào.")
+                    break
+                    
+                insights.extend(insights_page)
+                logger.info(f"Đã lấy được {len(insights_page)} bản ghi insights (Tổng: {len(insights)}).")
+
+                # Xử lý phân trang (Pagination)
+                next_page_url = data.get('paging', {}).get('next')
+                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Lỗi khi lấy số liệu thống kê cho chiến dịch {campaign_id}: {e}")
-            if e.response is not None:
-                logger.error(f"Response: {e.response.json()}")
-            return None
-        except Exception as e:
-            logger.error(f"Lỗi không xác định: {e}")
-            return None
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Insights cho tài khoản {account_id} (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+        return insights
 
 def main():
     try:
-        adsets = []
         extractor = FacebookAdsExtractor()
         if extractor.test_connection():
             accounts = extractor.get_all_ad_accounts()
             if accounts:
-                first_account_id = accounts[4]['id']
-                campaigns = extractor.get_campaigns_for_account(first_account_id, '2025-10-01', '2025-10-10')
-                if campaigns:
-                    first_campaign_id = campaigns[0]['campaign_id']
-                    adsets = extractor.get_adsets_for_campaign(first_campaign_id)
-                    if adsets:
-                        first_adset_id = adsets[0]['id']
-                        ads = extractor.get_ads_for_adset(first_adset_id)
-                        print(f"In mẫu dữ liệu: {ads[:1]}")  # In ra một ad mẫu
-            print(f"In mẫu dữ liệu: {adsets[:1]}")  # In ra một adset mẫu
+
+                # 1. Sử dụng đúng Account ID test
+                target_account_id = 'act_1465010674743789' 
+                
+                # 2. Sử dụng đúng Campaign ID (đặt trong một danh sách) test
+                target_campaign_id = ['120237330954530520']
+
+                # 3. Sử dụng đúng khoảng thời gian
+                start_date_str = '2025-10-01'
+                end_date_str = '2025-11-10' # Sử dụng ngày hợp lệ
+
+                logger.info(f"Bắt đầu lấy insights cho chiến dịch {target_campaign_id}...")
+
+                # 4. Gọi hàm get_insights với các tham số chính xác
+                insights = extractor.get_insights(
+                    account_id=target_account_id,
+                    campaign_id=target_campaign_id, # Lọc theo campaign_id
+                    start_date=start_date_str,
+                    end_date=end_date_str
+                )
+
+                # 5. In kết quả
+                if insights:
+                    print(insights)
+                else:
+                    print("\n--- KHÔNG TÌM THẤY KẾT QUẢ TỪ PYTHON ---\n")
+
         else:
             logger.error("Không thể kết nối đến Facebook API với token hiện tại.")
     except Exception as e:

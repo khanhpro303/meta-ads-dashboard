@@ -212,9 +212,6 @@
   .relative {
     position: relative;
   }
-  .static {
-    position: static;
-  }
   .mx-auto {
     margin-inline: auto;
   }
@@ -650,9 +647,19 @@
       grid-column-start: 2;
     }
   }
+  .md\:mt-0 {
+    @media (width >= 48rem) {
+      margin-top: calc(var(--spacing) * 0);
+    }
+  }
   .md\:mb-0 {
     @media (width >= 48rem) {
       margin-bottom: calc(var(--spacing) * 0);
+    }
+  }
+  .md\:w-72 {
+    @media (width >= 48rem) {
+      width: calc(var(--spacing) * 72);
     }
   }
   .md\:grid-cols-2 {
