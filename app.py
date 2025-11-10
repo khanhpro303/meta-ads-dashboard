@@ -39,7 +39,6 @@ try:
         logger.warning("Không tìm thấy tài khoản quảng cáo nào khi khởi động.")
 except Exception as e:
     logger.error(f"Lỗi nghiêm trọng khi lấy danh sách tài khoản lúc khởi động: {e}")
-# ==========================================================
 
 @app.route('/')
 def index():
@@ -98,7 +97,7 @@ def get_campaigns():
         if not all_campaigns:
             all_campaigns = []
         
-        all_campaigns.sort(key=lambda x: x.get('name', ''))
+        all_campaigns.sort(key=lambda x: x.get('campaign_name', ''))
 
         app_cache[CACHE_KEY] = {
             'data': all_campaigns,
@@ -162,7 +161,7 @@ def get_adsets():
         if not all_adsets:
             all_adsets = []
         
-        all_adsets.sort(key=lambda x: x.get('name', ''))
+        all_adsets.sort(key=lambda x: x.get('adset_name', ''))
 
         # Lưu vào cache
         app_cache[CACHE_KEY] = {
@@ -179,94 +178,198 @@ def get_adsets():
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
 
 
-@app.route('/api/dashboard_data', methods=['POST'])
-def get_dashboard_data():
+@app.route('/api/ads', methods=['POST'])
+def get_ads():
     """
-    Lấy dữ liệu dashboard cho một tài khoản và các chiến dịch cụ thể.
+    Lấy danh sách các quảng cáo (ads) cho một hoặc nhiều nhóm quảng cáo cụ thể.
     """
     try:
         data = request.get_json()
-        # === THAY ĐỔI: Nhận account_id từ frontend ===
         account_id = data.get('account_id')
+        adset_ids = data.get('adset_ids')
         date_preset = data.get('date_preset')
         start_date = data.get('start_date')
         end_date = data.get('end_date')
+        force_reload = data.get('force_reload', False)
+
+        if not account_id or not adset_ids:
+            return jsonify({'error': 'Thiếu account_id hoặc adset_ids.'}), 400
+
+        # Tạo một cache key duy nhất dựa trên các bộ lọc
+        adset_key_part = '_'.join(sorted(adset_ids))
+        if date_preset:
+            CACHE_KEY = f"ad_list_{account_id}_{adset_key_part}_{date_preset}"
+        elif start_date and end_date:
+            CACHE_KEY = f"ad_list_{account_id}_{adset_key_part}_{start_date}_{end_date}"
+        else:
+            return jsonify({'error': 'Thiếu tham số thời gian.'}), 400
+
+        # Kiểm tra cache
+        if not force_reload and CACHE_KEY in app_cache:
+            cached_item = app_cache[CACHE_KEY]
+            if time.time() - cached_item['timestamp'] < CACHE_DURATION_SECONDS:
+                logger.info(f"Trả về danh sách quảng cáo từ cache cho key: {CACHE_KEY}")
+                return jsonify(cached_item['data'])
+
+        logger.info(f"Cache không có hoặc đã hết hạn. Đang lấy danh sách quảng cáo từ API cho key: {CACHE_KEY}")
+        extractor = FacebookAdsExtractor()
+
+        all_ads = extractor.get_ads_for_adsets(
+            account_id=account_id,
+            adset_ids=adset_ids,
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date
+        )
+        if not all_ads:
+            all_ads = []
+        
+        all_ads.sort(key=lambda x: x.get('ad_name', ''))
+
+        # Lưu vào cache
+        app_cache[CACHE_KEY] = {
+            'data': all_ads,
+            'timestamp': time.time()
+        }
+        logger.info(f"Đã lưu danh sách quảng cáo vào cache cho key: {CACHE_KEY}")
+
+        return jsonify(all_ads)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy danh sách quảng cáo: {e}")
+        traceback.print_exc()
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+
+
+@app.route('/api/overview_data', methods=['POST'])
+def get_overview_data():
+    """
+    Lấy và xử lý dữ liệu tổng hợp cho trang Dashboard Tổng quan.
+    """
+    try:
+        data = request.get_json()
+        account_id = data.get('account_id')
         campaign_ids = data.get('campaign_ids')
+        adset_ids = data.get('adset_ids')
+        ad_ids = data.get('ad_ids')
+        date_preset = data.get('date_preset')
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
         force_reload = data.get('force_reload', False)
 
         if not account_id:
             return jsonify({'error': 'Thiếu account_id.'}), 400
 
-        # === THAY ĐỔI: Cập nhật CACHE_KEY để bao gồm account_id ===
-        if date_preset:
-            CACHE_KEY = f"dashboard_data_{account_id}_{date_preset}"
-        elif start_date and end_date:
-            CACHE_KEY = f"dashboard_data_{account_id}_{start_date}_{end_date}"
-        else:
-            return jsonify({'error': 'Thiếu tham số thời gian.'}), 400
+        # --- Tạo Cache Key phức tạp hơn để chứa tất cả bộ lọc ---
+        key_parts = [account_id]
+        if date_preset: key_parts.append(date_preset)
+        if start_date and end_date: key_parts.extend([start_date, end_date])
+        if campaign_ids: key_parts.append('c_' + '_'.join(sorted(campaign_ids)))
+        if adset_ids: key_parts.append('as_' + '_'.join(sorted(adset_ids)))
+        if ad_ids: key_parts.append('a_' + '_'.join(sorted(ad_ids)))
         
-        if campaign_ids:
-            CACHE_KEY += f"_{'_'.join(sorted(campaign_ids))}"
+        CACHE_KEY = "overview_" + "_".join(key_parts)
 
+        # --- Kiểm tra cache ---
         if not force_reload and CACHE_KEY in app_cache:
             cached_item = app_cache[CACHE_KEY]
             if time.time() - cached_item['timestamp'] < CACHE_DURATION_SECONDS:
-                logger.info(f"Trả về dữ liệu dashboard từ cache cho key: {CACHE_KEY}")
+                logger.info(f"Trả về dữ liệu tổng quan từ cache cho key: {CACHE_KEY}")
                 return jsonify(cached_item['data'])
 
-        logger.info(f"Cache không có hoặc đã hết hạn. Đang lấy dữ liệu dashboard từ API cho key: {CACHE_KEY}")
+        logger.info(f"Cache không có hoặc đã hết hạn. Đang lấy dữ liệu tổng quan từ API cho key: {CACHE_KEY}")
         extractor = FacebookAdsExtractor()
-        
-        # === THAY ĐỔI: Chỉ gọi API cho một tài khoản duy nhất ===
-        all_insights = extractor.get_insights(
+
+        # --- Gọi API để lấy dữ liệu thô ---
+        raw_insights = extractor.get_insights(
             account_id=account_id,
             campaign_id=campaign_ids,
+            adset_id=adset_ids,
+            ad_id=ad_ids,
             date_preset=date_preset,
             start_date=start_date,
             end_date=end_date
         )
-        
-        if not all_insights:
-            return jsonify({'scorecards': {}, 'campaign_table': []})
 
-        df = pd.DataFrame(all_insights)
-        numeric_cols = ['impressions', 'clicks', 'spend']
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.dropna(subset=numeric_cols)
+        # === THAY ĐỔI: Cập nhật logic xử lý và tổng hợp dữ liệu ===
+        if not raw_insights:
+            # Trả về cấu trúc scorecard rỗng nếu không có dữ liệu
+            return jsonify({
+                'scorecards': {
+                    'total_spend': 0, 'total_impressions': 0, 'ctr': 0, 
+                    'total_messages': 0, 'total_reach': 0, 'total_post_engagement': 0,
+                    'total_link_click': 0, 'total_purchases': 0, 'total_purchase_value': 0
+                },
+                'raw_data': []
+            })
 
-        total_spend = df['spend'].sum()
-        total_impressions = df['impressions'].sum()
-        total_clicks = df['clicks'].sum()
-        
-        cpm = (total_spend / total_impressions) * 1000 if total_impressions > 0 else 0
-        cpc = total_spend / total_clicks if total_clicks > 0 else 0
+        # --- Xử lý và tổng hợp dữ liệu ---
+        total_spend = 0
+        total_impressions = 0
+        total_clicks = 0
+        total_reach = 0
+        total_messages = 0
+        total_purchases = 0
+        total_purchase_value = 0
+        total_post_engagement = 0
+        total_link_click = 0
+
+        for item in raw_insights:
+            total_spend += float(item.get('spend', 0))
+            total_impressions += int(item.get('impressions', 0))
+            total_clicks += int(item.get('clicks', 0))
+            total_reach += int(item.get('reach', 0))
+            
+            # Xử lý trường 'actions' để lấy số lượng
+            if 'actions' in item:
+                for action in item['actions']:
+                    action_type = action.get('action_type')
+                    action_value = int(action.get('value', 0))
+                    
+                    if action_type == 'onsite_conversion.messaging_conversation_started_7d':
+                        total_messages += action_value
+                    elif action_type == 'onsite_conversion.purchase':
+                        total_purchases += action_value
+                    elif action_type == 'post_engagement':
+                        total_post_engagement += action_value
+                    elif action_type == 'link_click':
+                        total_link_click += action_value
+
+            # Xử lý trường 'action_values' để lấy giá trị chuyển đổi
+            if 'action_values' in item:
+                for action in item['action_values']:
+                    if action.get('action_type') == 'onsite_conversion.purchase':
+                        total_purchase_value += float(action.get('value', 0))
+
+        # Tính toán các chỉ số phái sinh
         ctr = (total_clicks / total_impressions) * 100 if total_impressions > 0 else 0
-
-        dashboard_data = {
+        
+        # --- Tạo cấu trúc dữ liệu trả về ---
+        response_data = {
             'scorecards': {
-                'total_spend': float(total_spend),
-                'cpm': float(cpm),
-                'cpc': float(cpc),
-                'ctr': float(ctr)
+                'total_spend': total_spend,
+                'total_impressions': total_impressions,
+                'ctr': ctr,
+                'total_messages': total_messages,
+                'total_reach': total_reach,
+                'total_post_engagement': total_post_engagement,
+                'total_link_click': total_link_click,
+                'total_purchases': total_purchases,
+                'total_purchase_value': total_purchase_value
             },
-            'campaign_table': df.to_dict(orient='records')
+            'raw_data': raw_insights
         }
 
+        # --- Lưu vào cache ---
         app_cache[CACHE_KEY] = {
-            'data': dashboard_data,
+            'data': response_data,
             'timestamp': time.time()
         }
-        logger.info(f"Đã lưu dữ liệu dashboard vào cache cho key: {CACHE_KEY}")
+        logger.info(f"Đã lưu dữ liệu tổng quan vào cache cho key: {CACHE_KEY}")
 
-        return jsonify(dashboard_data)
+        return jsonify(response_data)
 
     except Exception as e:
-        logger.error(f"Lỗi khi lấy dữ liệu dashboard: {e}")
+        logger.error(f"Lỗi khi lấy dữ liệu tổng quan: {e}")
         traceback.print_exc()
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
-
-# --- CHẠY APP ---
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-    app.run(host='0.0.0.0', port=port, debug=True)

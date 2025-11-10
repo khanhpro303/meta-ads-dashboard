@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import pytz
 import requests
 from dotenv import load_dotenv
+from database_manager import DatabaseManager
 
 
 logging.basicConfig(level=logging.INFO)
@@ -296,7 +297,7 @@ class FacebookAdsExtractor:
                 'limit': 100,
                 'date_preset': date_preset
             }
-        else:
+        elif start_date and end_date:
             params = {
                 'level': 'adset',
                 'filtering': filtering_json_string,
@@ -308,6 +309,9 @@ class FacebookAdsExtractor:
                     'until': end_date
                 })
             }
+        else:
+            logger.error("Phải cung cấp hoặc date_preset hoặc cả start_date và end_date.")
+            return adsets
 
         page_count = 0
         while url:
@@ -368,7 +372,7 @@ class FacebookAdsExtractor:
                 'limit': 100,
                 'date_preset': date_preset
             }
-        else:
+        elif start_date and end_date:
             params = {
                 'level': 'ad',
                 'filtering': filtering_json_string,
@@ -380,7 +384,10 @@ class FacebookAdsExtractor:
                     'until': end_date
                 })
             }
-        
+        else:
+            logger.error("Phải cung cấp hoặc date_preset hoặc cả start_date và end_date.")
+            return ads
+
         page_count = 0
         while url:
             try:
@@ -427,6 +434,8 @@ class FacebookAdsExtractor:
             'access_token': self.access_token,
             'limit': 100,
             'fields': 'impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
+            'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
+            'breakdowns': 'publisher_platform,platform_position',
         }
 
         filtering_structure = []
@@ -478,39 +487,73 @@ class FacebookAdsExtractor:
                 break
         return insights
 
+    def get_all_insights(self, account_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Lấy tất cả dữ liệu insights cho tài khoản quảng cáo,
+        bao gồm chiến dịch, nhóm quảng cáo và quảng cáo.
+        """
+        logger.info(f"Lấy tất cả dữ liệu insights cho tài khoản {account_id}...")
+        all_insights = []
+        url = f"{self.base_url}/{account_id}/insights"
+
+        params = {
+            'access_token': self.access_token,
+            'level': 'ad',
+            'limit': 100,
+            'fields': 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
+            'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
+            'breakdowns': 'publisher_platform,platform_position',
+        }
+
+        if start_date and end_date:
+            params['time_range'] = json.dumps({'since': start_date, 'until': end_date})
+        # Chỉ sử dụng date_preset nếu không có time_range.
+        elif date_preset and date_preset in DATE_PRESET:
+            params['date_preset'] = date_preset
+
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                insights_page = data.get('data', [])
+                if not insights_page:
+                    logger.info("Không tìm thấy thêm dữ liệu insights nào.")
+                    break
+                    
+                all_insights.extend(insights_page)
+                logger.info(f"Đã lấy được {len(insights_page)} bản ghi insights (Tổng: {len(all_insights)}).")
+
+                # Xử lý phân trang (Pagination)
+                next_page_url = data.get('paging', {}).get('next')
+                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Insights cho tài khoản {account_id} (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+        return all_insights
+
 def main():
     try:
         extractor = FacebookAdsExtractor()
         if extractor.test_connection():
             accounts = extractor.get_all_ad_accounts()
             if accounts:
-
-                # 1. Sử dụng đúng Account ID test
-                target_account_id = 'act_1465010674743789' 
-                
-                # 2. Sử dụng đúng Campaign ID (đặt trong một danh sách) test
-                target_campaign_id = ['120237330954530520']
-
-                # 3. Sử dụng đúng khoảng thời gian
-                start_date_str = '2025-10-01'
-                end_date_str = '2025-11-10' # Sử dụng ngày hợp lệ
-
-                logger.info(f"Bắt đầu lấy insights cho chiến dịch {target_campaign_id}...")
-
-                # 4. Gọi hàm get_insights với các tham số chính xác
-                insights = extractor.get_insights(
-                    account_id=target_account_id,
-                    campaign_id=target_campaign_id, # Lọc theo campaign_id
-                    start_date=start_date_str,
-                    end_date=end_date_str
-                )
-
-                # 5. In kết quả
-                if insights:
-                    print(insights)
-                else:
-                    print("\n--- KHÔNG TÌM THẤY KẾT QUẢ TỪ PYTHON ---\n")
-
+                # Test xuất all insights
+                first_account_id = accounts[4]['id']
+                date_preset = 'last_7d'
+                all_insights = extractor.get_all_insights(account_id=first_account_id, date_preset=date_preset)
+                logger.info(f"Tổng số bản ghi insights lấy được cho tài khoản {first_account_id}: {len(all_insights)}")
+                # Lưu dữ liệu vào file JSON
+                extractor.save_to_json({'insights': all_insights}, filename='all_insights.json')
         else:
             logger.error("Không thể kết nối đến Facebook API với token hiện tại.")
     except Exception as e:
