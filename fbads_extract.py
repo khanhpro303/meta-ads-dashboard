@@ -268,7 +268,7 @@ class FacebookAdsExtractor:
         logger.info(f"Hoàn tất! Lấy được tổng cộng {len(campaigns)} chiến dịch cho tài khoản {account_id}.")
         return campaigns
 
-    def get_adsets_for_campaign(self, account_id: str, campaign_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_adsets_for_campaigns(self, account_id: str, campaign_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Lấy tất cả adsets cho một hoặc nhiều chiến dịch cụ thể của tài khoản QC trong một khoảng thời gian.
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
@@ -341,7 +341,7 @@ class FacebookAdsExtractor:
         logger.info(f"Hoàn tất! Lấy được tổng cộng {len(adsets)} nhóm quảng cáo cho chiến dịch cho tài khoản {account_id}.")
         return adsets
 
-    def get_ads_for_adset(self, account_id: str, adset_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_ads_for_adsets(self, account_id: str, adset_id: List[str], start_date: str, end_date: str, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Lấy tất cả quảng cáo cho một nhóm quảng cáo cụ thể thuộc một hoặc nhiều adset cụ thể của tài khoản quảng cáo trong khoảng thời gian.
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
