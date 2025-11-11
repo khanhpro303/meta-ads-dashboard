@@ -103,26 +103,27 @@ def index():
 @app.route('/api/refresh', methods=['POST'])
 def refresh_data():
     """
-    Kích hoạt quy trình làm mới dữ liệu từ Meta Ads API vào database.
+    Kích hoạt quy trình làm mới dữ liệu (ETL) từ Meta Ads API vào database.
     """
-    # Lấy tham số từ request nếu có
-    data = request.get_json()
-    start_date_input = data.get('start_date')
-    end_date_input = data.get('end_date')
-    date_preset = data.get('date_preset')
-    # Xử lý date_preset nếu có
-    if date_preset and date_preset in DATE_PRESET:
-        start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
-    if not start_date or not end_date:
-            return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
-    start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date_input else datetime.today().date()
-    end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date() - timedelta(days=7)
     try:
-        db_manager.refresh_data(start_date=start_date, end_date=end_date, date_preset=date_preset)
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        logger.info(f"Yêu cầu Tải Dữ liệu: preset={date_preset}, start={start_date}, end={end_date}")
+
+        db_manager.refresh_data(
+            start_date=start_date, 
+            end_date=end_date, 
+            date_preset=date_preset
+        )
+        
         return jsonify({'message': 'Dữ liệu đã được làm mới thành công.'})
+    
     except Exception as e:
         logger.error(f"Lỗi khi làm mới dữ liệu: {e}", exc_info=True)
-        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/accounts', methods=['GET'])
 def get_accounts():
@@ -132,8 +133,8 @@ def get_accounts():
     session = db_manager.SessionLocal()
     try:
         accounts = session.query(DimAdAccount.ad_account_id, DimAdAccount.name).order_by(DimAdAccount.name).all()
-        # Chuyển đổi kết quả thành định dạng JSON mong muốn, loại bỏ tài khoản tên Nguyen Xuan Trang
-        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts if acc.name != 'Nguyen Xuan Trang']
+        # Chuyển đổi kết quả thành định dạng JSON mong muốn
+        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts]
         return jsonify(accounts_list)
     except Exception as e:
         logger.error(f"Lỗi khi lấy danh sách tài khoản từ DB: {e}")
@@ -151,6 +152,7 @@ def get_campaigns():
     account_id = data.get('account_id')
     start_date = data.get('start_date')
     end_date = data.get('end_date')
+    date_preset = data.get('date_preset')
     # Chuyển định dạng datetime để so sánh trong db
     start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     end_date = datetime.strptime(end_date, '%Y-%m-%d').date()

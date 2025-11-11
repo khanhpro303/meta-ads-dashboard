@@ -3,6 +3,8 @@ import logging
 from typing import Dict, List, Any, Set, Optional
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from flask import json
+import requests
 from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime, MetaData, Table, ForeignKey, func, Float, BigInteger, Integer, Date
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -292,37 +294,93 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def _fetch_status_from_api(self, account_id: str, level: str) -> str:
+        """
+        Hàm helper lấy trạng thái của chiến dịch, adset hoặc ad từ Meta Ads API.
+        """
+        import requests
+        status_data = []
+        url = f"{self.base_url}/{account_id}/{level}s"
+        params = {
+            'fields': 'status',
+            'access_token': os.getenv('SECRET_KEY')
+        }
+
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                status = data.get('data', [])
+                if not status:
+                    logger.info("Không tìm thấy thêm quảng cáo nào.")
+                    break
+
+                status_data.extend(status)
+                logger.info(f"Đã lấy được {len(status)} quảng cáo (Tổng: {len(status_data)}).")
+
+                # Xử lý phân trang (Pagination)
+                next_page_url = data.get('paging', {}).get('next')
+                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy trạng thái quảng cáo (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+
+        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(status_data)} trạng thái quảng cáo.")
+        return status_data
+                
     def _enrich_status_campaigns(self):
         """
-        Cập nhật trường 'status' cho các chiến dịch trong dim_campaign.
+        Cập nhật trường 'status' cho các chiến dịch trong dim_campaign, tránh lỗi N+1 query.
         """
         session = self.SessionLocal()
         try:
-            campaigns = session.query(DimCampaign).all()
-            # Gọi API để lấy trạng thái mới nhất cho mỗi chiến dịch
-            def fetch_campaign_status_from_api(campaign_id: str) -> str:
-                import requests
-                url = f"{self.base_url}/{campaign_id}"
-                params = {
-                    'fields': 'status',
-                    'access_token': os.getenv('SECRET_KEY')
-                }
-                response = requests.get(url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get('status')
-                else:
-                    logger.error(f"Lỗi API khi lấy trạng thái cho chiến dịch {campaign_id}: {response.text}")
-                    return None
-            for campaign in campaigns:
-                latest_status = fetch_campaign_status_from_api(campaign.campaign_id)
+            all_campaigns = session.query(DimCampaign).all()
+            if not all_campaigns:
+                logger.info("Không có chiến dịch nào trong DB để cập nhật trạng thái.")
+                return
+
+            # 1. Gom nhóm các chiến dịch theo account_id
+            campaigns_by_account = {}
+            for camp in all_campaigns:
+                if camp.ad_account_id not in campaigns_by_account:
+                    campaigns_by_account[camp.ad_account_id] = []
+                campaigns_by_account[camp.ad_account_id].append(camp)
+
+            # 2. Gọi API cho mỗi nhóm và tạo một bản đồ trạng thái tổng hợp
+            status_map = {}
+            for account_id, _ in campaigns_by_account.items():
+                logger.info(f"Đang lấy trạng thái chiến dịch cho tài khoản: {account_id}")
+                latest_statuses = self._fetch_status_from_api(account_id, 'campaign')
+                for item in latest_statuses:
+                    status_map[item['id']] = item['status']
+            
+            # 3. Duyệt lại và cập nhật trạng thái từ bản đồ đã tạo
+            update_count = 0
+            for campaign in all_campaigns:
+                latest_status = status_map.get(campaign.campaign_id)
                 if latest_status and campaign.status != latest_status:
                     campaign.status = latest_status
                     campaign.updated_at = datetime.now()
-            session.commit()
-            logger.info("Đã cập nhật trạng thái cho các chiến dịch trong dim_campaign.")
+                    update_count += 1
+            
+            if update_count > 0:
+                session.commit()
+                logger.info(f"Đã cập nhật trạng thái cho {update_count} chiến dịch.")
+            else:
+                logger.info("Không có trạng thái chiến dịch nào cần cập nhật.")
+
         except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái chiến dịch: {e}")
+            logger.error(f"Lỗi khi cập nhật trạng thái chiến dịch: {e}", exc_info=True)
             session.rollback()
         finally:
             session.close()
@@ -371,35 +429,52 @@ class DatabaseManager:
 
     def _enrich_status_adsets(self):
         """
-        Cập nhật trường 'status' cho các nhóm quảng cáo trong dim_adset.
+        Cập nhật trường 'status' cho các nhóm quảng cáo, tránh lỗi N+1 query.
         """
         session = self.SessionLocal()
         try:
-            adsets = session.query(DimAdset).all()
-            # Gọi API để lấy trạng thái mới nhất cho mỗi nhóm quảng cáo
-            def fetch_adset_status_from_api(adset_id: str) -> str:
-                import requests
-                url = f"{self.base_url}/{adset_id}"
-                params = {
-                    'fields': 'status',
-                    'access_token': os.getenv('SECRET_KEY')
-                }
-                response = requests.get(url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get('status')
-                else:
-                    logger.error(f"Lỗi API khi lấy trạng thái cho nhóm quảng cáo {adset_id}: {response.text}")
-                    return None
-            for adset in adsets:
-                latest_status = fetch_adset_status_from_api(adset.adset_id)
+            # Lấy tất cả adset và account_id tương ứng của chúng thông qua join với DimCampaign
+            query = session.query(DimAdset, DimCampaign.ad_account_id).join(DimCampaign, DimAdset.campaign_id == DimCampaign.campaign_id)
+            all_adsets_with_account = query.all()
+
+            if not all_adsets_with_account:
+                logger.info("Không có nhóm quảng cáo nào trong DB để cập nhật trạng thái.")
+                return
+
+            # 1. Gom nhóm adset theo account_id
+            adsets_by_account = {}
+            all_adsets_objects = []
+            for adset, account_id in all_adsets_with_account:
+                if account_id not in adsets_by_account:
+                    adsets_by_account[account_id] = []
+                adsets_by_account[account_id].append(adset)
+                all_adsets_objects.append(adset)
+
+            # 2. Gọi API cho mỗi nhóm và tạo bản đồ trạng thái
+            status_map = {}
+            for account_id, _ in adsets_by_account.items():
+                logger.info(f"Đang lấy trạng thái nhóm quảng cáo cho tài khoản: {account_id}")
+                latest_statuses = self._fetch_status_from_api(account_id, 'adset')
+                for item in latest_statuses:
+                    status_map[item['id']] = item['status']
+
+            # 3. Duyệt lại và cập nhật
+            update_count = 0
+            for adset in all_adsets_objects:
+                latest_status = status_map.get(adset.adset_id)
                 if latest_status and adset.status != latest_status:
                     adset.status = latest_status
                     adset.updated_at = datetime.now()
-            session.commit()
-            logger.info("Đã cập nhật trạng thái cho các nhóm quảng cáo trong dim_adset.")
+                    update_count += 1
+            
+            if update_count > 0:
+                session.commit()
+                logger.info(f"Đã cập nhật trạng thái cho {update_count} nhóm quảng cáo.")
+            else:
+                logger.info("Không có trạng thái nhóm quảng cáo nào cần cập nhật.")
+
         except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái nhóm quảng cáo: {e}")
+            logger.error(f"Lỗi khi cập nhật trạng thái nhóm quảng cáo: {e}", exc_info=True)
             session.rollback()
         finally:
             session.close()
@@ -450,35 +525,52 @@ class DatabaseManager:
 
     def _enrich_status_ads(self):
         """
-        Cập nhật trường 'status' cho các quảng cáo trong dim_ad.
+        Cập nhật trường 'status' cho các quảng cáo, tránh lỗi N+1 query.
         """
         session = self.SessionLocal()
         try:
-            ads = session.query(DimAd).all()
-            # Gọi API để lấy trạng thái mới nhất cho mỗi quảng cáo
-            def fetch_ad_status_from_api(ad_id: str) -> str:
-                import requests
-                url = f"{self.base_url}/{ad_id}"
-                params = {
-                    'fields': 'status',
-                    'access_token': os.getenv('SECRET_KEY')
-                }
-                response = requests.get(url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get('status')
-                else:
-                    logger.error(f"Lỗi API khi lấy trạng thái cho quảng cáo {ad_id}: {response.text}")
-                    return None
-            for ad in ads:
-                latest_status = fetch_ad_status_from_api(ad.ad_id)
+            # Lấy tất cả ad và account_id tương ứng của chúng thông qua join với DimCampaign
+            query = session.query(DimAd, DimCampaign.ad_account_id).join(DimCampaign, DimAd.campaign_id == DimCampaign.campaign_id)
+            all_ads_with_account = query.all()
+
+            if not all_ads_with_account:
+                logger.info("Không có quảng cáo nào trong DB để cập nhật trạng thái.")
+                return
+
+            # 1. Gom nhóm ad theo account_id
+            ads_by_account = {}
+            all_ads_objects = []
+            for ad, account_id in all_ads_with_account:
+                if account_id not in ads_by_account:
+                    ads_by_account[account_id] = []
+                ads_by_account[account_id].append(ad)
+                all_ads_objects.append(ad)
+
+            # 2. Gọi API cho mỗi nhóm và tạo bản đồ trạng thái
+            status_map = {}
+            for account_id, _ in ads_by_account.items():
+                logger.info(f"Đang lấy trạng thái quảng cáo cho tài khoản: {account_id}")
+                latest_statuses = self._fetch_status_from_api(account_id, 'ad')
+                for item in latest_statuses:
+                    status_map[item['id']] = item['status']
+
+            # 3. Duyệt lại và cập nhật
+            update_count = 0
+            for ad in all_ads_objects:
+                latest_status = status_map.get(ad.ad_id)
                 if latest_status and ad.status != latest_status:
                     ad.status = latest_status
                     ad.updated_at = datetime.now()
-            session.commit()
-            logger.info("Đã cập nhật trạng thái cho các quảng cáo trong dim_ad.")
+                    update_count += 1
+            
+            if update_count > 0:
+                session.commit()
+                logger.info(f"Đã cập nhật trạng thái cho {update_count} quảng cáo.")
+            else:
+                logger.info("Không có trạng thái quảng cáo nào cần cập nhật.")
+
         except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái quảng cáo: {e}")
+            logger.error(f"Lỗi khi cập nhật trạng thái quảng cáo: {e}", exc_info=True)
             session.rollback()
         finally:
             session.close()
@@ -634,7 +726,6 @@ class DatabaseManager:
         3. Cập nhật bảng Fact.
         """
         from fbads_extract import FacebookAdsExtractor
-        logger.info("===== BẮT ĐẦU QUY TRÌNH LÀM MỚI DỮ LIỆU =====")
         extractor = FacebookAdsExtractor()
 
         try:
@@ -655,19 +746,16 @@ class DatabaseManager:
                 account_id = account['id']
                 logger.info(f"--- Đang xử lý cho tài khoản: {account['name']} ({account_id}) ---")
 
-                logger.info("Lấy dữ liệu chiến dịch...")
                 campaigns = extractor.get_campaigns_for_account(account_id=account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
                 if campaigns:
                     all_campaigns.extend(campaigns)
                     campaign_ids = [c['campaign_id'] for c in campaigns]
 
-                    logger.info("Lấy dữ liệu nhóm quảng cáo...")
                     adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_id=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                     if adsets:
                         all_adsets.extend(adsets)
                         adset_ids = [a['adset_id'] for a in adsets]
 
-                        logger.info("Lấy dữ liệu quảng cáo...")
                         ads = extractor.get_ads_for_adsets(account_id=account_id, adset_id=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                         if ads:
                             all_ads.extend(ads)
@@ -684,7 +772,13 @@ class DatabaseManager:
             logger.info("=> Hoàn thành cập nhật Dimension.")
 
             # --- BƯỚC 2: LẤY VÀ CẬP NHẬT BẢNG FACT ---
-            logger.info(f"Bước 3: Lấy dữ liệu Insights với khoảng thời gian (preset: {date_preset} hoặc start: {start_date}, end: {end_date})...")
+            # Custom logs theo date_preset hoặc start_date/end_date
+            if date_preset:
+                logger.info(f"Lấy dữ liệu Insights cho khoảng thời gian preset: {date_preset}...")
+            elif start_date and end_date:
+                logger.info(f"Lấy dữ liệu Insights cho khoảng thời gian từ {start_date} đến {end_date}...")
+            else:
+                logger.info("Lấy dữ liệu Insights cho khoảng thời gian mặc định...")
             for account in accounts:
                 account_id = account['id']
                 logger.info(f"Lấy Insights cho tài khoản: {account_id}")
@@ -702,6 +796,9 @@ class DatabaseManager:
                 return
 
             logger.info(f"Tổng cộng có {len(all_insights)} bản ghi insights được lấy về.")
+            # Save vào json để debug
+            with open('debug_all_insights.json', 'w', encoding='utf-8') as f:
+                json.dump(all_insights, f, ensure_ascii=False, indent=3)
 
             # Cập nhật DimDate
             logger.info("Bước 4: Cập nhật bảng DimDate...")
@@ -716,8 +813,6 @@ class DatabaseManager:
             logger.info("Bước 5: Cập nhật bảng FactPerformance...")
             self.upsert_performance_data(all_insights)
             logger.info("=> Hoàn thành cập nhật FactPerformance.")
-
-            logger.info("===== KẾT THÚC QUY TRÌNH LÀM MỚI DỮ LIỆU THÀNH CÔNG =====")
 
         except Exception as e:
             logger.error(f"LỖI NGHIÊM TRỌNG trong quá trình làm mới dữ liệu: {e}", exc_info=True)
