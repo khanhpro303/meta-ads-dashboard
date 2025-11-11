@@ -247,7 +247,6 @@ class FacebookAdsExtractor:
         Lấy tất cả adsets cho một hoặc nhiều chiến dịch cụ thể của tài khoản QC trong một khoảng thời gian.
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
-        logger.info(f"Lấy nhóm quảng cáo cho chiến dịch của tài khoản {account_id} và của tổng {len(campaign_id)} chiến dịch...")
         adsets = []
         url = f"{self.base_url}/{account_id}/insights"
 
@@ -325,7 +324,6 @@ class FacebookAdsExtractor:
         Lấy tất cả quảng cáo cho một nhóm quảng cáo cụ thể thuộc một hoặc nhiều adset cụ thể của tài khoản quảng cáo trong khoảng thời gian.
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
-        logger.info(f"Lấy quảng cáo cho tổng {len(adset_id)} nhóm quảng cáo thuộc tài khoản {account_id}...")
         ads = []
         url = f"{self.base_url}/{account_id}/insights"
         filtering_structure = [
@@ -394,7 +392,7 @@ class FacebookAdsExtractor:
                 logger.error(f"Lỗi không xác định: {e}")
                 break
 
-        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(ads)} quảng cáo cho nhóm quảng cáo {adset_id}.")
+        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(ads)} quảng cáo cho tổng {len(adset_id)} nhóm quảng cáo.")
         return ads
 
     def get_insights(self, account_id: str, campaign_id: Optional[List[str]] = None, adset_id: Optional[List[str]] = None, ad_id: Optional[List[str]] = None, date_preset: Optional[str] = 'last_7d',

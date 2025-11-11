@@ -291,6 +291,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Lỗi khi Upsert Campaigns: {e}")
             session.rollback()
+            raise
         finally:
             session.close()
 
@@ -424,6 +425,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Lỗi khi Upsert Adsets: {e}")
             session.rollback()
+            raise
         finally:
             session.close()
 
@@ -520,6 +522,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Lỗi khi Upsert Ads: {e}")
             session.rollback()
+            raise
         finally:
             session.close()
 
@@ -588,19 +591,25 @@ class DatabaseManager:
         mapping = {getattr(r, column_name): getattr(r, pk_name) for r in existing_records}
         
         # 2. Xác định các giá trị mới cần insert
-        new_values = values - set(mapping.keys())
+        new_values_set = values - set(mapping.keys())
         
         # 3. Insert các giá trị mới nếu có
-        if new_values:
-            new_records_data = [{column_name: val} for val in new_values]
-            # Dùng bulk_insert_mappings để insert và lấy lại ID
-            session.bulk_insert_mappings(model, new_records_data, return_defaults=True)
+        if new_values_set:
+            new_records_data = [{column_name: val} for val in new_values_set]
+            
+            # Insert các bản ghi mới (không cần return_defaults)
+            session.bulk_insert_mappings(model, new_records_data)
             session.commit()
             
+            # Sau khi commit, query lại chính các bản ghi đó để lấy ID
+            logger.info(f"Đã tạo {len(new_records_data)} bản ghi. Đang lấy lại ID...")
+            inserted_records = session.query(model).filter(getattr(model, column_name).in_(new_values_set)).all()
+            
             # Cập nhật lại mapping với các bản ghi vừa tạo
-            for record_data in new_records_data:
-                mapping[record_data[column_name]] = record_data[pk_name]
-            logger.info(f"Đã tạo {len(new_values)} bản ghi mới trong bảng {model.__tablename__}.")
+            for record in inserted_records:
+                mapping[getattr(record, column_name)] = getattr(record, pk_name)
+            
+            logger.info(f"Đã tạo và map {len(inserted_records)} bản ghi mới trong bảng {model.__tablename__}.")
             
         return mapping
 
@@ -624,8 +633,8 @@ class DatabaseManager:
 
             # Lấy mapping từ DB hoặc tạo mới nếu chưa có
             date_map = {str(r.full_date): r.date_key for r in session.query(DimDate.full_date, DimDate.date_key).filter(DimDate.full_date.in_([datetime.fromisoformat(d).date() for d in all_dates]))}
-            platform_map = self._get_or_create_dim_records(session, DimPlatform, 'platform_name', all_platforms)
-            placement_map = self._get_or_create_dim_records(session, DimPlacement, 'placement_name', all_placements)
+            platform_map = self._get_or_create_dim_records(session, DimPlatform, 'platform_name', all_platforms, 'platform_id')
+            placement_map = self._get_or_create_dim_records(session, DimPlacement, 'placement_name', all_placements, 'placement_id')
 
             # --- BƯỚC 2: Chuẩn bị dữ liệu để load vào Fact Table ---
             prepared_data = []
@@ -715,6 +724,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Lỗi khi Upsert Performance Data: {e}", exc_info=True)
             session.rollback()
+            raise
         finally:
             session.close()
     
@@ -748,6 +758,10 @@ class DatabaseManager:
 
                 campaigns = extractor.get_campaigns_for_account(account_id=account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
                 if campaigns:
+                    for c in campaigns:
+                    # Ghi đè account_id ('1465010674743789')
+                    # bằng account_id ('act_1465010674743789')
+                        c['account_id'] = account_id
                     all_campaigns.extend(campaigns)
                     campaign_ids = [c['campaign_id'] for c in campaigns]
 

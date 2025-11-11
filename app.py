@@ -441,3 +441,6 @@ def get_chart_data():
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
     finally:
         session.close()
+
+if __name__ == '__main__':
+    app.run(debug=True)
