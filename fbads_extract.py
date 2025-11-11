@@ -217,7 +217,7 @@ class FacebookAdsExtractor:
         if date_preset and date_preset in DATE_PRESET:
             params = {
                 'access_token': self.access_token,
-                'fields': 'account_id,campaign_id,campaign_name,created_time,objective,status',
+                'fields': 'account_id,campaign_id,campaign_name,created_time,objective',
                 'limit': 100,
                 'date_preset': date_preset,
                 'level': 'campaign'
@@ -225,7 +225,7 @@ class FacebookAdsExtractor:
         else:
             params = {
                 'access_token': self.access_token,
-                'fields': 'campaign_id,campaign_name,created_time,objective,status,account_id',
+                'fields': 'campaign_id,campaign_name,created_time,objective,account_id',
                 'limit': 100,
                 'time_range': json.dumps({
                     'since': start_date,
@@ -498,7 +498,7 @@ class FacebookAdsExtractor:
             'access_token': self.access_token,
             'level': 'ad',
             'limit': 100,
-            'fields': 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
+            'fields': 'objective,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
             'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
             'breakdowns': 'publisher_platform,platform_position',
         }
@@ -547,8 +547,15 @@ def main():
             if accounts:
                 # Test xuất all insights
                 first_account_id = accounts[4]['id']
-                date_preset = 'last_7d'
-                all_insights = extractor.get_all_insights(account_id=first_account_id, date_preset=date_preset)
+                # Test xuất cho ngày 11-11-2025 thôi
+                start_date = '2025-11-11'
+                end_date = '2025-11-11'
+                date_preset = None
+                # Test lấy chiến dịch
+                campaigns = extractor.get_campaigns_for_account(account_id=first_account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                logger.info(f"Tổng số chiến dịch lấy được cho tài khoản {first_account_id}: {len(campaigns)}")
+                # Lấy insights
+                all_insights = extractor.get_all_insights(account_id=first_account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
                 logger.info(f"Tổng số bản ghi insights lấy được cho tài khoản {first_account_id}: {len(all_insights)}")
                 # Lưu dữ liệu vào file JSON
                 extractor.save_to_json({'insights': all_insights}, filename='all_insights.json')

@@ -107,9 +107,16 @@ def refresh_data():
     """
     # Lấy tham số từ request nếu có
     data = request.get_json()
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
+    start_date_input = data.get('start_date')
+    end_date_input = data.get('end_date')
     date_preset = data.get('date_preset')
+    # Xử lý date_preset nếu có
+    if date_preset and date_preset in DATE_PRESET:
+        start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+    if not start_date or not end_date:
+            return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
+    start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date_input else datetime.today().date()
+    end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date() - timedelta(days=7)
     try:
         db_manager.refresh_data(start_date=start_date, end_date=end_date, date_preset=date_preset)
         return jsonify({'message': 'Dữ liệu đã được làm mới thành công.'})

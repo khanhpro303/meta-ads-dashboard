@@ -1,13 +1,12 @@
 import os
 import logging
-from typing import Dict, List, Any, Set
+from typing import Dict, List, Any, Set, Optional
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime, MetaData, Table, ForeignKey, func, Float, BigInteger, Integer, Date
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import pytz
-from fbads_extract import FacebookAdsExtractor
 
 # Tải biến môi trường từ file .env
 load_dotenv()
@@ -17,6 +16,28 @@ logger = logging.getLogger(__name__)
 
 # SQLAlchemy Base (Lớp cơ sở cho các model)
 Base = declarative_base()
+
+def parse_datetime_flexible(date_string: str) -> Optional[datetime]:
+    """
+    Thử phân tích một chuỗi ngày tháng với nhiều định dạng khác nhau.
+    """
+    if not date_string:
+        return None
+    
+    # Danh sách các định dạng cần thử, từ phức tạp đến đơn giản
+    formats_to_try = [
+        '%Y-%m-%dT%H:%M:%S%z',  # Định dạng đầy đủ với timezone (e.g., 2023-10-26T10:30:00+0700)
+        '%Y-%m-%d',            # Định dạng chỉ có ngày (e.g., 2023-10-26)
+    ]
+    
+    for fmt in formats_to_try:
+        try:
+            return datetime.strptime(date_string, fmt)
+        except ValueError:
+            continue # Thử định dạng tiếp theo nếu thất bại
+            
+    logger.warning(f"Không thể phân tích chuỗi ngày tháng: '{date_string}' với các định dạng đã biết.")
+    return None
 
 # --- ĐỊNH NGHĨA STAR SCHEMA ---
 
@@ -141,8 +162,8 @@ class DatabaseManager:
     def __init__(self):
         self.db_url = os.getenv('DATABASE_URL')
         if not self.db_url:
-            self.db_url = "sqlite:///meta_ads_dashboard.db"
-            logger.warning("DATABASE_URL không được thiết lập, sử dụng SQLite local.")
+            logger.error("DATABASE_URL không được cấu hình trong biến môi trường.")
+            return
         
         if self.db_url.startswith("postgres://"):
             self.db_url = self.db_url.replace("postgres://", "postgresql://", 1)
@@ -244,7 +265,7 @@ class DatabaseManager:
                 'campaign_id': camp['campaign_id'],
                 'name': camp.get('campaign_name'),
                 'objective': camp.get('objective'),
-                'created_time': datetime.strptime(camp['created_time'], '%Y-%m-%dT%H:%M:%S%z') if 'created_time' in camp else None,
+                'created_time': parse_datetime_flexible(camp.get('created_time')),
                 'ad_account_id': camp['account_id']
             })
 
@@ -319,7 +340,7 @@ class DatabaseManager:
                 'adset_id': adset['adset_id'],
                 'name': adset.get('adset_name'),
                 'status': adset.get('status'),
-                'created_time': datetime.strptime(adset['created_time'], '%Y-%m-%dT%H:%M:%S%z') if 'created_time' in adset else None,
+                'created_time': parse_datetime_flexible(adset.get('created_time')),
                 # === BỔ SUNG KHÓA NGOẠI ===
                 'campaign_id': adset.get('campaign_id')
             })
@@ -396,7 +417,7 @@ class DatabaseManager:
                 'ad_id': ad['ad_id'],
                 'name': ad.get('ad_name'),
                 'status': ad.get('status'),
-                'created_time': datetime.strptime(ad['created_time'], '%Y-%m-%dT%H:%M:%S%z') if 'created_time' in ad else None,
+                'created_time': parse_datetime_flexible(ad.get('created_time')),
                 # === BỔ SUNG CÁC KHÓA NGOẠI ===
                 'adset_id': ad.get('adset_id'),
                 'campaign_id': ad.get('campaign_id')
@@ -612,6 +633,7 @@ class DatabaseManager:
         2. Cập nhật các bảng Dimension.
         3. Cập nhật bảng Fact.
         """
+        from fbads_extract import FacebookAdsExtractor
         logger.info("===== BẮT ĐẦU QUY TRÌNH LÀM MỚI DỮ LIỆU =====")
         extractor = FacebookAdsExtractor()
 
@@ -619,10 +641,10 @@ class DatabaseManager:
             # --- BƯỚC 1: LẤY VÀ CẬP NHẬT CÁC BẢNG DIMENSION CƠ BẢN ---
             logger.info("Bước 1: Lấy và cập nhật danh sách tài khoản quảng cáo...")
             accounts = extractor.get_all_ad_accounts()
+            # Không lấy ad acc tên trong danh sách sau: Nguyen Xuan Trang, Lâm Khải
+            accounts = [acc for acc in accounts if acc['name'] != 'Nguyen Xuan Trang' and acc['name'] != 'Lâm Khải']
+            logger.info("=> Hoàn thành cập nhật tài khoản loại bỏ 'Nguyen Xuan Trang' và 'Lâm Khải'.")
             self.upsert_ad_accounts(accounts)
-            # Không lấy ad acc tên Nguyen Xuan Trang
-            accounts = [acc for acc in accounts if acc['name'] != 'Nguyen Xuan Trang']
-            logger.info("=> Hoàn thành cập nhật tài khoản loại bỏ 'Nguyen Xuan Trang'.")
 
             all_campaigns = []
             all_adsets = []
@@ -640,13 +662,13 @@ class DatabaseManager:
                     campaign_ids = [c['campaign_id'] for c in campaigns]
 
                     logger.info("Lấy dữ liệu nhóm quảng cáo...")
-                    adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_ids=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                    adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_id=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                     if adsets:
                         all_adsets.extend(adsets)
                         adset_ids = [a['adset_id'] for a in adsets]
 
                         logger.info("Lấy dữ liệu quảng cáo...")
-                        ads = extractor.get_ads_for_adsets(account_id=account_id, adset_ids=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
+                        ads = extractor.get_ads_for_adsets(account_id=account_id, adset_id=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                         if ads:
                             all_ads.extend(ads)
 
