@@ -59,8 +59,8 @@ def get_accounts():
     session = db_manager.SessionLocal()
     try:
         accounts = session.query(DimAdAccount.ad_account_id, DimAdAccount.name).order_by(DimAdAccount.name).all()
-        # Chuyển đổi kết quả thành định dạng JSON mong muốn
-        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts]
+        # Chuyển đổi kết quả thành định dạng JSON mong muốn, loại bỏ tài khoản tên Nguyen Xuan Trang
+        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts if acc.name != 'Nguyen Xuan Trang']
         return jsonify(accounts_list)
     except Exception as e:
         logger.error(f"Lỗi khi lấy danh sách tài khoản từ DB: {e}")
@@ -71,10 +71,16 @@ def get_accounts():
 @app.route('/api/campaigns', methods=['POST'])
 def get_campaigns():
     """
-    Lấy danh sách chiến dịch từ bảng DimCampaign dựa trên account_id.
+    Lấy danh sách chiến dịch từ bảng DimCampaign dựa trên account_id và filter theo ngày được chọn.
+    created_time trong khoảng date from và date to.
     """
     data = request.get_json()
     account_id = data.get('account_id')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    # Chuyển định dạng datetime để so sánh trong db
+    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
     if not account_id:
         return jsonify({'error': 'Thiếu account_id.'}), 400
 
@@ -82,8 +88,10 @@ def get_campaigns():
     try:
         campaigns = session.query(DimCampaign.campaign_id, DimCampaign.name)\
             .filter(DimCampaign.ad_account_id == account_id)\
+            .filter(DimCampaign.created_time >= start_date)\
+            .filter(DimCampaign.created_time <= end_date)\
             .order_by(DimCampaign.name).all()
-        
+
         campaigns_list = [{'campaign_id': c.campaign_id, 'name': c.name} for c in campaigns]
         return jsonify(campaigns_list)
     except Exception as e:
@@ -95,20 +103,26 @@ def get_campaigns():
 @app.route('/api/adsets', methods=['POST'])
 def get_adsets():
     """
-    Lấy danh sách adset từ bảng DimAdset dựa trên danh sách campaign_ids.
+    Lấy danh sách adset từ bảng DimAdset dựa trên danh sách campaign_ids và filter theo ngày được chọn.
+    created_time trong khoảng date from và date to.
     """
     data = request.get_json()
     campaign_ids = data.get('campaign_ids')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    # Chuyển định dạng datetime để so sánh trong db
+    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
     if not campaign_ids:
         return jsonify([]) # Trả về mảng rỗng nếu không có campaign nào được chọn
 
     session = db_manager.SessionLocal()
     try:
-        # Lấy các adset_id duy nhất từ bảng Fact, sau đó join với DimAdset
+        # Lấy thông tin adset từ bảng DimAdset
         adset_query = select(DimAdset.adset_id, DimAdset.name)\
-            .join(FactPerformance, FactPerformance.adset_id == DimAdset.adset_id)\
-            .filter(FactPerformance.campaign_id.in_(campaign_ids))\
-            .distinct()\
+            .filter(DimAdset.campaign_id.in_(campaign_ids))\
+            .filter(DimAdset.created_time >= start_date)\
+            .filter(DimAdset.created_time <= end_date)\
             .order_by(DimAdset.name)
             
         adsets = session.execute(adset_query).all()

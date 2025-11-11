@@ -289,7 +289,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'adset_id,adset_name',
+                'fields': 'campaign_id,adset_id,adset_name',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -298,7 +298,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'adset_id,adset_name',
+                'fields': 'campaign_id,adset_id,adset_name',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({
@@ -364,7 +364,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'ad_id,ad_name',
+                'fields': 'campaign_id,adset_id,ad_id,ad_name',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -373,7 +373,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'ad_id,ad_name',
+                'fields': 'campaign_id,adset_id,ad_id,ad_name',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({

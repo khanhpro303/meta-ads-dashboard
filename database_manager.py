@@ -57,6 +57,8 @@ class DimAdset(Base):
     status = Column(String)
     created_time = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Campaign
+    campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
 
 class DimAd(Base):
     """
@@ -69,6 +71,9 @@ class DimAd(Base):
     status = Column(String)
     created_time = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Adset và Campaign
+    campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
+    adset_id = Column(String, ForeignKey('dim_adset.adset_id'))
 
 class DimPlatform(Base):
     """Bảng Dimension: Nền tảng (Facebook, Instagram, etc.)."""
@@ -605,7 +610,9 @@ class DatabaseManager:
             logger.info("Bước 1: Lấy và cập nhật danh sách tài khoản quảng cáo...")
             accounts = extractor.get_all_ad_accounts()
             self.upsert_ad_accounts(accounts)
-            logger.info("=> Hoàn thành cập nhật tài khoản.")
+            # Không lấy ad acc tên Nguyen Xuan Trang
+            accounts = [acc for acc in accounts if acc['name'] != 'Nguyen Xuan Trang']
+            logger.info("=> Hoàn thành cập nhật tài khoản loại bỏ 'Nguyen Xuan Trang'.")
 
             all_campaigns = []
             all_adsets = []
@@ -638,6 +645,10 @@ class DatabaseManager:
             self.upsert_campaigns(all_campaigns)
             self.upsert_adsets(all_adsets)
             self.upsert_ads(all_ads)
+            # Enrich trạng thái
+            self._enrich_status_campaigns()
+            self._enrich_status_adsets()
+            self._enrich_status_ads()
             logger.info("=> Hoàn thành cập nhật Dimension.")
 
             # --- BƯỚC 2: LẤY VÀ CẬP NHẬT BẢNG FACT ---
