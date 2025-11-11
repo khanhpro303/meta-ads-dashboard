@@ -320,6 +320,8 @@ class DatabaseManager:
                 'name': adset.get('adset_name'),
                 'status': adset.get('status'),
                 'created_time': datetime.strptime(adset['created_time'], '%Y-%m-%dT%H:%M:%S%z') if 'created_time' in adset else None,
+                # === BỔ SUNG KHÓA NGOẠI ===
+                'campaign_id': adset.get('campaign_id')
             })
 
         stmt = pg_insert(DimAdset).values(prepared_data)
@@ -329,6 +331,8 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
+                # === BỔ SUNG CẬP NHẬT KHÓA NGOẠI ===
+                'campaign_id': stmt.excluded.campaign_id,
                 'updated_at': datetime.now()
             }
         )
@@ -393,6 +397,9 @@ class DatabaseManager:
                 'name': ad.get('ad_name'),
                 'status': ad.get('status'),
                 'created_time': datetime.strptime(ad['created_time'], '%Y-%m-%dT%H:%M:%S%z') if 'created_time' in ad else None,
+                # === BỔ SUNG CÁC KHÓA NGOẠI ===
+                'adset_id': ad.get('adset_id'),
+                'campaign_id': ad.get('campaign_id')
             })
 
         stmt = pg_insert(DimAd).values(prepared_data)
@@ -402,6 +409,9 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
+                # === BỔ SUNG CẬP NHẬT CÁC KHÓA NGOẠI ===
+                'adset_id': stmt.excluded.adset_id,
+                'campaign_id': stmt.excluded.campaign_id,
                 'updated_at': datetime.now()
             }
         )

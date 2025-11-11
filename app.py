@@ -11,6 +11,7 @@ from sqlalchemy import func, select, and_
 # Import các lớp từ database_manager
 from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformance, DimDate, DimPlatform, DimPlacement
 
+DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
 # --- CẤU HÌNH CƠ BẢN ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +23,71 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-meta-ads-secret-key')
 db_manager = DatabaseManager()
 # Tạo tất cả các bảng nếu chưa tồn tại
 db_manager.create_all_tables()
+
+# ======================================================================
+# HELPER FUNCTION - XỬ LÝ DATE PRESET
+# ======================================================================
+def _calculate_date_range(date_preset: str, today: datetime.date = None) -> tuple[datetime.date, datetime.date]:
+    """
+    Tính toán start_date và end_date dựa trên một date_preset.
+    Trả về một tuple (start_date, end_date).
+    """
+    if today is None:
+        today = datetime.today().date()
+
+    start_date, end_date = None, None
+
+    if date_preset == 'today':
+        start_date = end_date = today
+    elif date_preset == 'yesterday':
+        start_date = end_date = today - timedelta(days=1)
+    elif date_preset in ['last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d']:
+        days = int(date_preset.replace('last_', '').replace('d', ''))
+        start_date = today - timedelta(days=days - 1)
+        end_date = today
+    elif date_preset == 'this_week_mon_today':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif date_preset == 'this_week_sun_today':
+        start_date = today - timedelta(days=(today.weekday() + 1) % 7)
+        end_date = today
+    elif date_preset == 'this_month':
+        start_date = today.replace(day=1)
+        end_date = today
+    elif date_preset == 'this_quarter':
+        start_month = (today.month - 1) // 3 * 3 + 1
+        start_date = today.replace(month=start_month, day=1)
+        end_date = today
+    elif date_preset == 'this_year':
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    elif date_preset == 'last_week_mon_sun':
+        end_of_last_week = today - timedelta(days=today.weekday() + 1)
+        start_of_last_week = end_of_last_week - timedelta(days=6)
+        start_date, end_date = start_of_last_week, end_of_last_week
+    elif date_preset == 'last_week_sun_sat':
+        end_of_last_week = today - timedelta(days=(today.weekday() + 1) % 7 + 1)
+        start_of_last_week = end_of_last_week - timedelta(days=6)
+        start_date, end_date = start_of_last_week, end_of_last_week
+    elif date_preset == 'last_month':
+        first_day_this_month = today.replace(day=1)
+        end_date = first_day_this_month - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    elif date_preset == 'last_quarter':
+        current_quarter_start_month = (today.month - 1) // 3 * 3 + 1
+        first_day_this_quarter = today.replace(month=current_quarter_start_month, day=1)
+        end_date = first_day_this_quarter - timedelta(days=1)
+        last_quarter_start_month = (end_date.month - 1) // 3 * 3 + 1
+        start_date = end_date.replace(month=last_quarter_start_month, day=1)
+    elif date_preset == 'last_year':
+        first_day_this_year = today.replace(month=1, day=1)
+        end_date = first_day_this_year - timedelta(days=1)
+        start_date = end_date.replace(month=1, day=1)
+    elif date_preset in ['maximum', 'data_maximum']:
+        # Trả về None để không áp dụng bộ lọc ngày
+        return None, None
+    
+    return start_date, end_date
 
 # ======================================================================
 # API ENDPOINTS - TRUY VẤN TRỰC TIẾP TỪ DATABASE
@@ -137,19 +203,25 @@ def get_adsets():
 @app.route('/api/ads', methods=['POST'])
 def get_ads():
     """
-    Lấy danh sách ads từ bảng DimAd dựa trên danh sách adset_ids.
+    Lấy danh sách ads từ bảng DimAd dựa trên danh sách adset_ids được chọn và filter theo ngày được chọn.
+    created_time trong khoảng date from và date to.
     """
     data = request.get_json()
     adset_ids = data.get('adset_ids')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    # Chuyển định dạng datetime để so sánh trong db
+    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
     if not adset_ids:
         return jsonify([])
 
     session = db_manager.SessionLocal()
     try:
         ad_query = select(DimAd.ad_id, DimAd.name)\
-            .join(FactPerformance, FactPerformance.ad_id == DimAd.ad_id)\
-            .filter(FactPerformance.adset_id.in_(adset_ids))\
-            .distinct()\
+            .filter(DimAd.adset_id.in_(adset_ids))\
+            .filter(DimAd.created_time >= start_date)\
+            .filter(DimAd.created_time <= end_date)\
             .order_by(DimAd.name)
 
         ads = session.execute(ad_query).all()
@@ -169,14 +241,26 @@ def get_overview_data():
     session = db_manager.SessionLocal()
     try:
         data = request.get_json()
-        start_date_str = data.get('start_date')
-        end_date_str = data.get('end_date')
-        
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        start_date, end_date = None, None
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+        if not start_date or not end_date:
+            return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
+        # Chuyển đổi định dạng ngày
+        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date else None
+        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date else None
+
         # --- Xây dựng câu truy vấn động dựa trên bộ lọc ---
         query = select(
             func.sum(FactPerformance.spend).label('total_spend'),
             func.sum(FactPerformance.impressions).label('total_impressions'),
             func.sum(FactPerformance.clicks).label('total_clicks'),
+            func.avg(FactPerformance.ctr).label('avg_ctr'),
+            func.avg(FactPerformance.cpm).label('avg_cpm'),
+            func.avg(FactPerformance.frequency).label('avg_frequency'),
             func.sum(FactPerformance.reach).label('total_reach'),
             func.sum(FactPerformance.messages_started).label('total_messages'),
             func.sum(FactPerformance.purchases).label('total_purchases'),
@@ -186,9 +270,7 @@ def get_overview_data():
         ).join(DimDate, FactPerformance.date_key == DimDate.date_key)
 
         # Áp dụng bộ lọc thời gian
-        if start_date_str and end_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        if start_date and end_date:
             query = query.filter(DimDate.full_date.between(start_date, end_date))
 
         # Áp dụng các bộ lọc ID
@@ -210,23 +292,22 @@ def get_overview_data():
             # Trả về cấu trúc rỗng nếu không có kết quả
             return jsonify({
                 'scorecards': {
-                    'total_spend': 0, 'total_impressions': 0, 'ctr': 0, 
+                    'total_spend': 0, 'total_impressions': 0, 'total_clicks': 0,
+                    'avg_ctr': 0, 'avg_cpm': 0, 'avg_frequency': 0,
                     'total_messages': 0, 'total_reach': 0, 'total_post_engagement': 0,
                     'total_link_click': 0, 'total_purchases': 0, 'total_purchase_value': 0
                 }
             })
 
-        # Tính toán các chỉ số phái sinh
-        total_impressions = result.total_impressions or 0
-        total_clicks = result.total_clicks or 0
-        ctr = (total_clicks / total_impressions) * 100 if total_impressions > 0 else 0
-
         # Tạo cấu trúc dữ liệu trả về
         response_data = {
             'scorecards': {
                 'total_spend': result.total_spend or 0,
-                'total_impressions': total_impressions,
-                'ctr': ctr,
+                'total_impressions': result.total_impressions or 0,
+                'ctr': result.avg_ctr or 0,
+                'total_clicks': result.total_clicks or 0,
+                'avg_cpm': result.avg_cpm or 0,
+                'avg_frequency': result.avg_frequency or 0,
                 'total_messages': result.total_messages or 0,
                 'total_reach': result.total_reach or 0,
                 'total_post_engagement': result.total_post_engagement or 0,
@@ -256,14 +337,18 @@ def get_chart_data():
     session = db_manager.SessionLocal()
     try:
         data = request.get_json()
-        start_date_str = data.get('start_date')
-        end_date_str = data.get('end_date')
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        # Logic xử lý date_preset
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
 
-        if not start_date_str or not end_date_str:
+        if not start_date or not end_date:
             return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
 
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
 
         # --- Xây dựng câu truy vấn động ---
         query = select(
