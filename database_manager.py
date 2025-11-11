@@ -65,6 +65,8 @@ class DimCampaign(Base):
     objective = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
+    date_start = Column(DateTime)
+    date_stop = Column(DateTime)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension AdAccount
     ad_account_id = Column(String, ForeignKey('dim_ad_account.ad_account_id'))
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -79,6 +81,8 @@ class DimAdset(Base):
     name = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
+    date_start = Column(DateTime)
+    date_stop = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Campaign
     campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
@@ -93,6 +97,8 @@ class DimAd(Base):
     name = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
+    date_start = Column(DateTime)
+    date_stop = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Adset và Campaign
     campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
@@ -268,6 +274,8 @@ class DatabaseManager:
                 'name': camp.get('campaign_name'),
                 'objective': camp.get('objective'),
                 'created_time': parse_datetime_flexible(camp.get('created_time')),
+                'date_start': parse_datetime_flexible(camp.get('date_start')),
+                'date_stop': parse_datetime_flexible(camp.get('date_stop')),
                 'ad_account_id': camp['account_id']
             })
 
@@ -278,6 +286,7 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'objective': stmt.excluded.objective,
                 'created_time': stmt.excluded.created_time,
+                'date_stop': stmt.excluded.date_stop,
                 'ad_account_id': stmt.excluded.ad_account_id,
                 'updated_at': datetime.now()
             }
@@ -321,7 +330,7 @@ class DatabaseManager:
                     break
 
                 status_data.extend(status)
-                logger.info(f"Đã lấy được {len(status)} quảng cáo (Tổng: {len(status_data)}).")
+                logger.info(f"Đã lấy được {len(status)} trạng thái cho {level} (Tổng: {len(status_data)}).")
 
                 # Xử lý phân trang (Pagination)
                 next_page_url = data.get('paging', {}).get('next')
@@ -400,6 +409,8 @@ class DatabaseManager:
                 'name': adset.get('adset_name'),
                 'status': adset.get('status'),
                 'created_time': parse_datetime_flexible(adset.get('created_time')),
+                'date_start': parse_datetime_flexible(adset.get('date_start')),
+                'date_stop': parse_datetime_flexible(adset.get('date_stop')),
                 # === BỔ SUNG KHÓA NGOẠI ===
                 'campaign_id': adset.get('campaign_id')
             })
@@ -411,6 +422,7 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
+                'date_stop': stmt.excluded.date_stop,
                 # === BỔ SUNG CẬP NHẬT KHÓA NGOẠI ===
                 'campaign_id': stmt.excluded.campaign_id,
                 'updated_at': datetime.now()
@@ -455,7 +467,7 @@ class DatabaseManager:
             # 2. Gọi API cho mỗi nhóm và tạo bản đồ trạng thái
             status_map = {}
             for account_id, _ in adsets_by_account.items():
-                logger.info(f"Đang lấy trạng thái nhóm quảng cáo cho tài khoản: {account_id}")
+                logger.info(f"Đang lấy trạng thái adset cho tài khoản: {account_id}")
                 latest_statuses = self._fetch_status_from_api(account_id, 'adset')
                 for item in latest_statuses:
                     status_map[item['id']] = item['status']
@@ -471,12 +483,12 @@ class DatabaseManager:
             
             if update_count > 0:
                 session.commit()
-                logger.info(f"Đã cập nhật trạng thái cho {update_count} nhóm quảng cáo.")
+                logger.info(f"Đã cập nhật trạng thái cho {update_count} adset.")
             else:
-                logger.info("Không có trạng thái nhóm quảng cáo nào cần cập nhật.")
+                logger.info("Không có trạng thái adset nào cần cập nhật.")
 
         except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái nhóm quảng cáo: {e}", exc_info=True)
+            logger.error(f"Lỗi khi cập nhật trạng thái adset: {e}", exc_info=True)
             session.rollback()
         finally:
             session.close()
@@ -495,6 +507,8 @@ class DatabaseManager:
                 'name': ad.get('ad_name'),
                 'status': ad.get('status'),
                 'created_time': parse_datetime_flexible(ad.get('created_time')),
+                'date_start': parse_datetime_flexible(ad.get('date_start')),
+                'date_stop': parse_datetime_flexible(ad.get('date_stop')),
                 # === BỔ SUNG CÁC KHÓA NGOẠI ===
                 'adset_id': ad.get('adset_id'),
                 'campaign_id': ad.get('campaign_id')
@@ -507,6 +521,7 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
+                'date_stop': stmt.excluded.date_stop,
                 # === BỔ SUNG CẬP NHẬT CÁC KHÓA NGOẠI ===
                 'adset_id': stmt.excluded.adset_id,
                 'campaign_id': stmt.excluded.campaign_id,

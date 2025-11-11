@@ -107,15 +107,28 @@ def refresh_data():
     """
     try:
         data = request.get_json()
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
-        
-        logger.info(f"Yêu cầu Tải Dữ liệu: preset={date_preset}, start={start_date}, end={end_date}")
+
+        # Xác định ngày bắt đầu và kết thúc
+        start_date, end_date = None, None
+        if date_preset and date_preset in DATE_PRESET:
+            logger.info(f"Yêu cầu tải lại dữ liệu theo date_preset: {date_preset}")
+            today = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date()
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            logger.info(f"Yêu cầu tải lại dữ liệu theo khoảng thời gian: {start_date_input} - {end_date_input}")
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            # Mặc định an toàn nếu không có gì được gửi
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
 
         db_manager.refresh_data(
-            start_date=start_date, 
-            end_date=end_date, 
+            start_date=start_date.strftime('%Y-%m-%d'), 
+            end_date=end_date.strftime('%Y-%m-%d'), 
             date_preset=date_preset
         )
         
@@ -134,7 +147,7 @@ def get_accounts():
     try:
         accounts = session.query(DimAdAccount.ad_account_id, DimAdAccount.name).order_by(DimAdAccount.name).all()
         # Chuyển đổi kết quả thành định dạng JSON mong muốn
-        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts]
+        accounts_list = [{'id': acc.ad_account_id, 'name': acc.name} for acc in accounts if acc.name not in ['Nguyen Xuan Trang', 'Lâm Khải']]
         return jsonify(accounts_list)
     except Exception as e:
         logger.error(f"Lỗi khi lấy danh sách tài khoản từ DB: {e}")
@@ -150,21 +163,27 @@ def get_campaigns():
     """
     data = request.get_json()
     account_id = data.get('account_id')
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-    date_preset = data.get('date_preset')
-    # Chuyển định dạng datetime để so sánh trong db
-    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
     if not account_id:
         return jsonify({'error': 'Thiếu account_id.'}), 400
+    start_date_input = data.get('start_date')
+    end_date_input = data.get('end_date')
+    date_preset = data.get('date_preset')
+    # Logic xử lý date_preset
+    if date_preset and date_preset in DATE_PRESET:
+        start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else datetime.today().date())
+    elif start_date_input and end_date_input:
+        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+    else:
+        end_date = datetime.today().date()
+        start_date = end_date.replace(day=1)
 
     session = db_manager.SessionLocal()
     try:
         campaigns = session.query(DimCampaign.campaign_id, DimCampaign.name)\
             .filter(DimCampaign.ad_account_id == account_id)\
-            .filter(DimCampaign.created_time >= start_date)\
-            .filter(DimCampaign.created_time <= end_date)\
+            .filter(DimCampaign.start_time >= start_date)\
+            .filter(DimCampaign.start_time <= end_date)\
             .order_by(DimCampaign.name).all()
 
         campaigns_list = [{'campaign_id': c.campaign_id, 'name': c.name} for c in campaigns]
@@ -183,11 +202,20 @@ def get_adsets():
     """
     data = request.get_json()
     campaign_ids = data.get('campaign_ids')
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-    # Chuyển định dạng datetime để so sánh trong db
-    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    if not campaign_ids:
+        return jsonify({'error': 'Thiếu campaign_ids.'}), 400
+    start_date_input = data.get('start_date')
+    end_date_input = data.get('end_date')
+    date_preset = data.get('date_preset')
+    # Logic xử lý date_preset
+    if date_preset and date_preset in DATE_PRESET:
+        start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+    elif start_date_input and end_date_input:
+        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+    else:
+        end_date = datetime.today().date()
+        start_date = end_date.replace(day=1)
     if not campaign_ids:
         return jsonify([]) # Trả về mảng rỗng nếu không có campaign nào được chọn
 
@@ -196,8 +224,8 @@ def get_adsets():
         # Lấy thông tin adset từ bảng DimAdset
         adset_query = select(DimAdset.adset_id, DimAdset.name)\
             .filter(DimAdset.campaign_id.in_(campaign_ids))\
-            .filter(DimAdset.created_time >= start_date)\
-            .filter(DimAdset.created_time <= end_date)\
+            .filter(DimAdset.start_time >= start_date)\
+            .filter(DimAdset.start_time <= end_date)\
             .order_by(DimAdset.name)
             
         adsets = session.execute(adset_query).all()
@@ -217,11 +245,18 @@ def get_ads():
     """
     data = request.get_json()
     adset_ids = data.get('adset_ids')
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-    # Chuyển định dạng datetime để so sánh trong db
-    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    start_date_input = data.get('start_date')
+    end_date_input = data.get('end_date')
+    date_preset = data.get('date_preset')
+    # Logic xử lý date_preset
+    if date_preset and date_preset in DATE_PRESET:
+        start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+    elif start_date_input and end_date_input:
+        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+    else:
+        end_date = datetime.today().date()
+        start_date = end_date.replace(day=1)
     if not adset_ids:
         return jsonify([])
 
@@ -229,8 +264,8 @@ def get_ads():
     try:
         ad_query = select(DimAd.ad_id, DimAd.name)\
             .filter(DimAd.adset_id.in_(adset_ids))\
-            .filter(DimAd.created_time >= start_date)\
-            .filter(DimAd.created_time <= end_date)\
+            .filter(DimAd.start_time >= start_date)\
+            .filter(DimAd.start_time <= end_date)\
             .order_by(DimAd.name)
 
         ads = session.execute(ad_query).all()
@@ -253,14 +288,16 @@ def get_overview_data():
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
+        # Logic xử lý date_preset
         start_date, end_date = None, None
         if date_preset and date_preset in DATE_PRESET:
             start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
-        if not start_date or not end_date:
-            return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
-        # Chuyển đổi định dạng ngày
-        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date else None
-        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date else None
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date_input else None
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else None
+        else:
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
 
         # --- Xây dựng câu truy vấn động dựa trên bộ lọc ---
         query = select(
@@ -352,12 +389,12 @@ def get_chart_data():
         # Logic xử lý date_preset
         if date_preset and date_preset in DATE_PRESET:
             start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
-
-        if not start_date or not end_date:
-            return jsonify({'error': 'Thiếu start_date hoặc end_date.'}), 400
-
-        start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
-        end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
 
         # --- Xây dựng câu truy vấn động ---
         query = select(

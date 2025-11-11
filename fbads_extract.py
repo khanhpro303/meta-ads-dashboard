@@ -191,7 +191,7 @@ class FacebookAdsExtractor:
         if date_preset and date_preset in DATE_PRESET:
             params = {
                 'access_token': self.access_token,
-                'fields': 'account_id,campaign_id,campaign_name,created_time,objective',
+                'fields': 'account_id,campaign_id,campaign_name,created_time,objective,date_start,date_stop',
                 'limit': 100,
                 'date_preset': date_preset,
                 'level': 'campaign'
@@ -200,7 +200,7 @@ class FacebookAdsExtractor:
         else:
             params = {
                 'access_token': self.access_token,
-                'fields': 'campaign_id,campaign_name,created_time,objective,account_id',
+                'fields': 'campaign_id,campaign_name,created_time,objective,account_id,date_start,date_stop',
                 'limit': 100,
                 'time_range': json.dumps({
                     'since': start_date,
@@ -264,7 +264,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,adset_name',
+                'fields': 'campaign_id,adset_id,adset_name,created_time,date_start,date_stop',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -274,7 +274,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,adset_name',
+                'fields': 'campaign_id,adset_id,adset_name,created_time,date_start,date_stop',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({
@@ -340,7 +340,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,ad_id,ad_name',
+                'fields': 'campaign_id,adset_id,ad_id,ad_name,created_time,date_start,date_stop',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -350,7 +350,7 @@ class FacebookAdsExtractor:
             params = {
                 'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,ad_id,ad_name',
+                'fields': 'campaign_id,adset_id,ad_id,ad_name,created_time,date_start,date_stop',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({

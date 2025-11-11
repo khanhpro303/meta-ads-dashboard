@@ -7,8 +7,8 @@
     <link href="../static/css/styles.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    
     <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
     <style>
@@ -84,9 +84,9 @@
                         Bộ lọc Báo cáo
                     </h2>
                     <div class="flex space-x-2">
-                        <button id="btn-download-data" class="flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all">
-                            <i data-feather="download" class="w-4 h-4 mr-2"></i>
-                            <span>Tải Dữ liệu</span>
+                        <button id="btn-refresh-data" class="flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all">
+                            <i data-feather="refresh-cw" class="w-4 h-4 mr-2"></i>
+                            <span>Làm mới</span>
                         </button>
                         <button id="btn-apply-filters" class="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all">
                             <i data-feather="check" class="w-4 h-4 mr-2"></i>
@@ -97,39 +97,35 @@
 
                 <div class="border-b border-gray-200 mb-6"></div>
 
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label for="filter-time" class="block text-sm font-medium text-gray-700 mb-1">Thời gian</label>
                         <select id="filter-time" name="filter-time" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                             <option value="today">Hôm nay</option>
-                            <option value="last_30_days" selected>30 ngày trước</option>
-                            <option value="last_90_days">90 ngày trước</option>
+                            <option value="last_7d">7 ngày qua</option>
+                            <option value="last_30d" selected>30 ngày qua</option>
+                            <option value="this_month">Tháng này</option>
+                            <option value="last_month">Tháng trước</option>
                             <option value="custom">Tùy chỉnh...</option>
                         </select>
                     </div>
                     <div>
-                        <label for="filter-brand" class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-                        <select id="filter-brand" name="filter-brand" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                            <option value="all">Tất cả Brand</option>
-                            </select>
-                    </div>
-                    <div>
                         <label for="filter-campaigns" class="block text-sm font-medium text-gray-700 mb-1">Campaigns</label>
-                        <select id="filter-campaigns" name="filter-campaigns" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                            <option value="all">Tất cả Campaigns</option>
-                            </select>
+                        <select id="filter-campaigns" name="filter-campaigns" multiple>
+                            <!-- Options sẽ được load bằng JS -->
+                        </select>
                     </div>
                     <div>
                         <label for="filter-adsets" class="block text-sm font-medium text-gray-700 mb-1">Adsets</label>
-                        <select id="filter-adsets" name="filter-adsets" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                            <option value="all">Tất cả Adsets</option>
-                            </select>
+                        <select id="filter-adsets" name="filter-adsets" multiple>
+                            <!-- Options sẽ được load bằng JS -->
+                        </select>
                     </div>
                     <div>
                         <label for="filter-ads" class="block text-sm font-medium text-gray-700 mb-1">Ads</label>
-                        <select id="filter-ads" name="filter-ads" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                            <option value="all">Tất cả Ads</option>
-                            </select>
+                        <select id="filter-ads" name="filter-ads" multiple>
+                            <!-- Options sẽ được load bằng JS -->
+                        </select>
                     </div>
                 </div>
                 
