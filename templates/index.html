@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meta Ads Dashboard</title>
-    <link href="../static/css/styles.css" rel="stylesheet">
+    <link href="static/css/styles.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
-    
-    <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default.min.css" rel="stylesheet">
     <style>
         /* Sử dụng font Inter cho trang web */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -148,11 +148,9 @@
                         <span class="text-sm font-medium text-gray-500">Tổng chi tiêu</span>
                         <i data-feather="dollar-sign" class="text-green-500"></i>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">150.8M đ</p>
-                    <p class="text-sm text-green-600 mt-1 flex items-center">
-                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                        <span>+12.5%</span>
-                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    <p id="kpi-total-spend" class="text-3xl font-bold text-gray-900 mt-2">0 đ</p>
+                    <p id="kpi-total-spend-growth" class="text-sm text-gray-500 mt-1 flex items-center">
+                        <span>(n/a)</span>
                     </p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md">
@@ -160,11 +158,9 @@
                         <span class="text-sm font-medium text-gray-500">Lượt hiển thị</span>
                         <i data-feather="eye" class="text-blue-500"></i>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">12,850,000</p>
-                    <p class="text-sm text-green-600 mt-1 flex items-center">
-                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                        <span>+8.2%</span>
-                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    <p id="kpi-total-impressions" class="text-3xl font-bold text-gray-900 mt-2">0</p>
+                    <p id="kpi-total-impressions-growth" class="text-sm text-green-600 mt-1 flex items-center">
+                        <span>(n/a)</span>
                     </p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md">
@@ -172,23 +168,19 @@
                         <span class="text-sm font-medium text-gray-500">CTR</span>
                         <i data-feather="mouse-pointer" class="text-yellow-500"></i>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">2.15%</p>
-                    <p class="text-sm text-red-600 mt-1 flex items-center">
-                        <i data-feather="arrow-down" class="w-4 h-4 mr-1"></i>
-                        <span>-0.5%</span>
-                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    <p id="kpi-avg-ctr" class="text-3xl font-bold text-gray-900 mt-2">0.00%</p>
+                    <p id="kpi-avg-ctr-growth" class="text-sm text-red-600 mt-1 flex items-center">
+                        <span>(n/a)</span>
                     </p>
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm font-medium text-gray-500">Lượt chuyển đổi</span>
-                        <i data-feather="check-circle" class="text-purple-500"></i>
+                        <span class="text-sm font-medium text-gray-500">Lượt mua hàng</span>
+                        <i data-feather="shopping-cart" class="text-purple-500"></i>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">1,200</p>
-                    <p class="text-sm text-green-600 mt-1 flex items-center">
-                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                        <span>+20%</span>
-                        <span class="text-gray-500 ml-1">so với kỳ trước</span>
+                    <p id="kpi-total-purchases" class="text-3xl font-bold text-gray-900 mt-2">0</p>
+                    <p id="kpi-total-purchases-growth" class="text-sm text-green-600 mt-1 flex items-center">
+                        <span>(n/a)</span>
                     </p>
                 </div>
             </div>
@@ -211,42 +203,42 @@
                     
                     <div class="text-center mb-4">
                         <span class="text-sm font-medium text-gray-500">Đã chi tiêu (Total Cost)</span>
-                        <p class="text-3xl font-bold text-gray-900">77,15</p>
+                        <p id="funnel-total-cost" class="text-3xl font-bold text-gray-900">0 đ</p>
                     </div>
 
                     <div class="flex-1 flex flex-col justify-center">
                         <div class="space-y-1 text-center">
                             <div class="relative bg-blue-600 text-white p-3 rounded-t-lg w-full mx-auto">
                                 <div class="flex justify-between items-center text-xs">
-                                    <span class="font-medium">CPM: 1,8</span>
+                                    <span id="funnel-cpm" class="font-medium">CPM: 0 đ</span>
                                     <span class="font-semibold">Hiển thị</span>
                                 </div>
                                 <div class="text-xl font-bold">Impressions</div>
-                                <div class="text-2xl font-bold">42.169</div>
+                                <div id="funnel-impressions" class="text-2xl font-bold">0</div>
                             </div>
                             <div class="relative bg-teal-500 text-white p-3 w-[90%] mx-auto">
                                 <div class="flex justify-between items-center text-xs">
-                                    <span class="font-medium">Cost/Eng: 0,07</span>
+                                    <span id="funnel-cpe" class="font-medium">Cost/Eng: 0 đ</span>
                                     <span class="font-semibold">Tương tác</span>
                                 </div>
                                 <div class="text-lg font-bold">Post Engagement</div>
-                                <div class="text-2xl font-bold">1.099</div>
+                                <div id="funnel-post-engagement" class="text-2xl font-bold">0</div>
                             </div>
                             <div class="relative bg-yellow-400 text-gray-800 p-3 w-[80%] mx-auto">
                                 <div class="flex justify-between items-center text-xs">
-                                    <span class="font-medium">CPC: 0,0</span>
+                                    <span id="funnel-cpc" class="font-medium">CPC: 0 đ</span>
                                     <span class="font-semibold">Quan tâm</span>
                                 </div>
                                 <div class="text-lg font-bold">Clicks</div>
-                                <div class="text-2xl font-bold">1.677</div>
+                                <div id="funnel-clicks" class="text-2xl font-bold">0</div>
                             </div>
                             <div class="relative bg-red-500 text-white p-3 rounded-b-lg w-[70%] mx-auto">
                                 <div class="flex justify-between items-center text-xs">
-                                    <span class="font-medium">Cost/Msg: 4,8</span>
+                                    <span id="funnel-cpmc" class="font-medium">Cost/Msg: 0 đ</span>
                                     <span class="font-semibold">Chuyển đổi</span>
                                 </div>
                                 <div class="text-lg font-bold">Messaging</div>
-                                <div class="text-2xl font-bold">16</div>
+                                <div id="funnel-messaging" class="text-2xl font-bold">0</div>
                             </div>
                         </div>
                     </div>
@@ -260,26 +252,23 @@
                             <div class="grid grid-cols-3 gap-4">
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt hiển thị</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">42.169</p>
-                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                                        <span>+10.2%</span>
+                                    <p id="kpi-detail-impressions" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-impressions-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt tiếp cận</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">35.800</p>
-                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                                        <span>+8.5%</span>
+                                    <p id="kpi-detail-reach" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-reach-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">%CTR (tất cả)</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">3,98%</p>
-                                    <p class="text-sm text-red-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-down" class="w-4 h-4 mr-1"></i>
-                                        <span>-0.2%</span>
+                                    <p id="kpi-detail-ctr" class="text-2xl font-bold text-gray-900 mt-1">0.00%</p>
+                                    <p id="kpi-detail-ctr-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                             </div>
@@ -291,16 +280,15 @@
                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Nhóm chỉ số tương tác</h3>
                             <div class="grid grid-cols-2 gap-4"> <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt tương tác</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">1.099</p>
-                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                                        <span>+120</span>
+                                    <p id="kpi-detail-post-engagement" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-post-engagement-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt click vào liên kết</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">1.677</p>
-                                    <p class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                    <p id="kpi-detail-link-click" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-link-click-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
                                         <span>(n/a)</span>
                                     </p>
                                 </div>
@@ -314,24 +302,22 @@
                             <div class="grid grid-cols-3 gap-4">
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt bắt đầu chat</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">16</p>
-                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                                        <span>+2</span>
+                                    <p id="kpi-detail-messages" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-messages-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Lượt mua (Meta)</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">5</p>
-                                    <p class="text-sm text-green-600 mt-1 flex items-center justify-center">
-                                        <i data-feather="arrow-up" class="w-4 h-4 mr-1"></i>
-                                        <span>+1</span>
+                                    <p id="kpi-detail-purchases" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                                    <p id="kpi-detail-purchases-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                        <span>(n/a)</span>
                                     </p>
                                 </div>
                                 <div class="text-center">
                                     <span class="text-sm font-medium text-gray-500">Giá trị CĐ (Mua)</span>
-                                    <p class="text-2xl font-bold text-gray-900 mt-1">2.5M đ</p>
-                                    <p class="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                                    <p id="kpi-detail-purchase-value" class="text-2xl font-bold text-gray-900 mt-1">0 đ</p>
+                                    <p id="kpi-detail-purchase-value-growth" class="text-sm text-gray-500 mt-1 flex items-center justify-center">
                                         <span>(n/a)</span>
                                     </p>
                                 </div>
@@ -356,46 +342,10 @@
                                 <th class="py-3 px-4 font-medium">CPA</th>
                             </tr>
                         </thead>
-                        <tbody class="text-gray-700">
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="py-3 px-4 font-medium">Chiến dịch Mùa hè 2024</td>
-                                <td class="py-3 px-4">
-                                    <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Hoạt động</span>
-                                </td>
-                                <td class="py-3 px-4">45.2M đ</td>
-                                <td class="py-3 px-4">3,200,500</td>
-                                <td class="py-3 px-4">450</td>
-                                <td class="py-3 px-4">100,444 đ</td>
-                            </tr>
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="py-3 px-4 font-medium">Khuyến mãi T10</td>
-                                <td class="py-3 px-4">
-                                    <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Hoạt động</span>
-                                </td>
-                                <td class="py-3 px-4">30.1M đ</td>
-                                <td class="py-3 px-4">2,100,000</td>
-                                <td class="py-3 px-4">310</td>
-                                <td class="py-3 px-4">97,096 đ</td>
-                            </tr>
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="py-3 px-4 font-medium">Ra mắt sản phẩm mới</td>
-                                <td class="py-3 px-4">
-                                    <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Tạm dừng</span>
-                                </td>
-                                <td class="py-3 px-4">25.0M đ</td>
-                                <td class="py-3 px-4">1,500,000</td>
-                                <td class="py-3 px-4">200</td>
-                                <td class="py-3 px-4">125,000 đ</td>
-                            </tr>
-                            <tr class="hover:bg-gray-50">
-                                <td class="py-3 px-4 font-medium">Chiến dịch Awareness Q4</td>
-                                <td class="py-3 px-4">
-                                    <span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">Đã kết thúc</span>
-                                </td>
-                                <td class="py-3 px-4">50.5M đ</td>
-                                <td class="py-3 px-4">6,050,000</td>
-                                <td class="py-3 px-4">240</td>
-                                <td class="py-3 px-4">210,416 đ</td>
+                        <tbody id="campaign-table-body" class="text-gray-700">
+                            <!-- Dữ liệu sẽ được fill bằng JS -->
+                            <tr>
+                                <td colspan="6" class="py-4 px-4 text-center text-gray-500">Vui lòng áp dụng bộ lọc để xem dữ liệu.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -404,6 +354,6 @@
         </main>
     </div>
 
-    <script src="../static/js/main.js"></script>
+    <script src="static/js/main.js"></script>
 </body>
 </html>

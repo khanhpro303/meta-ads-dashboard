@@ -74,16 +74,22 @@ function initializeCharts() {
  * Khởi tạo Tom Select cho các dropdown
  */
 function initializeTomSelect() {
+    const tomSelectSettings = {
+        create: false,
+        valueField: 'id',    // Báo TomSelect dùng trường 'id' làm giá trị
+        labelField: 'text',  // Báo TomSelect dùng trường 'text' làm nhãn
+        searchField: 'text'  // Cho phép tìm kiếm bằng trường 'text'
+    };
     // Cài đặt cho dropdown chọn MỘT
     const singleSelectSettings = (placeholder) => ({
-        create: false,
+        ...tomSelectSettings,
         placeholder: placeholder,
     });
 
     // Cài đặt cho dropdown chọn NHIỀU
     const multiSelectSettings = (placeholder) => ({
         plugins: ['remove_button', 'checkbox_options'], // Thêm checkbox cho dễ nhìn
-        create: false,
+        ...tomSelectSettings,
         placeholder: placeholder,
     });
 
@@ -260,28 +266,38 @@ async function handleApplyFilters() {
 // --- CÁC HÀM TẢI DROPDOWN (ĐÃ CẬP NHẬT CHO TOM SELECT) ---
 
 async function loadAccountDropdown() {
-    tsAccount.clear();
+    tsAccount.clear(true);
     tsAccount.clearOptions();
-    tsAccount.load(async (callback) => {
-        tsAccount.disable();
-        try {
-            const response = await fetch('/api/accounts');
-            if (!response.ok) throw new Error('Lỗi mạng');
-            const accounts = await response.json();
-            // Đổi key 'ad_account_id' thành 'id' và 'name' thành 'text' cho Tom-Select
-            const options = accounts.map(c => ({ id: c.id, text: c.name }));
-            tsAccount.enable();
-            callback(options);
-            // Tự động chọn tài khoản đầu tiên và tải campaign cho nó
-            if (options.length > 0) {
-                tsAccount.setValue(options[0].id);
-            }
-        } catch (error) {
-            console.error('Lỗi tải tài khoản:', error);
-            tsAccount.enable();
-            callback([]);
+    tsAccount.disable();
+    tsAccount.setPlaceholder('Đang tải tài khoản...');
+    try {
+        // 1. Tải dữ liệu trực tiếp (KHÔNG dùng ts.load())
+        const response = await fetch('/api/accounts');
+        if (!response.ok) throw new Error('Lỗi mạng khi tải tài khoản');
+        const accounts = await response.json();
+        
+        // 2. Map dữ liệu (Code này của bạn đã đúng)
+        const options = accounts.map(c => ({ id: c.id, text: c.name }));
+
+        // 3. Thêm dữ liệu vào TomSelect
+        tsAccount.addOptions(options);
+        tsAccount.enable(); // Bật lại
+        tsAccount.setPlaceholder('Chọn tài khoản...');
+
+        // 4. Tự động chọn tài khoản đầu tiên và tải campaign
+        if (options.length > 0) {
+            // Đặt giá trị một cách "im lặng" (silent = true) để tránh kích hoạt sự kiện 'change'
+            // Chúng ta sẽ gọi triggerCampaignLoad() thủ công ngay sau đây.
+            tsAccount.setValue(options[0].id, true); 
+            
+            // Kích hoạt tải campaign thủ công sau khi đã chọn xong
+            triggerCampaignLoad();
         }
-    });
+    } catch (error) {
+        console.error('Lỗi tải tài khoản:', error);
+        tsAccount.enable();
+        tsAccount.setPlaceholder('Lỗi tải tài khoản');
+    }
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
@@ -527,7 +543,7 @@ function populateDropdown(tomSelectInstance, data, placeholder, valueKey, nameKe
  */
 function resetDropdown(tomSelectInstance, placeholder) {
     if (tomSelectInstance) {
-        tomSelectInstance.clear();
+        tomSelectInstance.clear(true);
         tomSelectInstance.clearOptions();
         tomSelectInstance.setPlaceholder(placeholder);
         tomSelectInstance.disable();
