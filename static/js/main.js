@@ -269,7 +269,7 @@ async function loadAccountDropdown() {
     tsAccount.clear(true);
     tsAccount.clearOptions();
     tsAccount.disable();
-    tsAccount.setPlaceholder('Đang tải tài khoản...');
+    tsAccount.control_input.placeholder = 'Đang tải tài khoản...';
     try {
         // 1. Tải dữ liệu trực tiếp (KHÔNG dùng ts.load())
         const response = await fetch('/api/accounts');
@@ -282,7 +282,7 @@ async function loadAccountDropdown() {
         // 3. Thêm dữ liệu vào TomSelect
         tsAccount.addOptions(options);
         tsAccount.enable(); // Bật lại
-        tsAccount.setPlaceholder('Chọn tài khoản...');
+        tsAccount.control_input.placeholder = 'Đang tải tài khoản...';
 
         // 4. Tự động chọn tài khoản đầu tiên và tải campaign
         if (options.length > 0) {
@@ -296,78 +296,74 @@ async function loadAccountDropdown() {
     } catch (error) {
         console.error('Lỗi tải tài khoản:', error);
         tsAccount.enable();
-        tsAccount.setPlaceholder('Lỗi tải tài khoản');
+        tsAccount.control_input.placeholder = 'Lỗi tải tài khoản...';
     }
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
     resetDropdown(tsCampaigns, 'Đang tải chiến dịch...');
-    tsCampaigns.enable();
-    tsCampaigns.load(async (callback) => {
-        try {
-            const response = await fetch('/api/campaigns', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_id: accountId, ...dateParams })
-            });
-            if (!response.ok) throw new Error('Lỗi mạng');
-            const campaigns = await response.json();
-            // Đổi key 'campaign_id' thành 'id' và 'name' thành 'text' cho Tom-Select
-            const options = campaigns.map(c => ({ id: c.campaign_id, text: c.name }));
-            callback(options);
-            tsCampaigns.setPlaceholder('Chọn chiến dịch...');
-        } catch (error) {
-            console.error('Lỗi tải chiến dịch:', error);
-            callback([]);
-            tsCampaigns.setPlaceholder('Lỗi tải chiến dịch');
-        }
-    });
+    try {
+        const response = await fetch('/api/campaigns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId, ...dateParams })
+        });
+        if (!response.ok) throw new Error('Lỗi mạng');
+        const campaigns = await response.json();
+        // Đổi key 'campaign_id' thành 'id' và 'name' thành 'text' cho Tom-Select
+        const options = campaigns.map(c => ({ id: c.campaign_id, text: c.name }));
+        // Thêm dữ liệu vào Tom Select
+        tsCampaigns.addOptions(options);
+        tsCampaigns.enable();
+        tsCampaigns.control_input.placeholder = 'Chọn chiến dịch...';
+    } catch (error) {
+        console.error('Lỗi tải chiến dịch:', error);
+        tsCampaigns.enable();
+        tsCampaigns.control_input.placeholder = 'Lỗi tải chiến dịch...';
+    }
 }
+
 
 async function loadAdsetDropdown(campaignIds) {
     resetDropdown(tsAdsets, 'Đang tải nhóm QC...');
-    tsAdsets.enable();
-    tsAdsets.load(async (callback) => {
-        try {
-            const response = await fetch('/api/adsets', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ campaign_ids: campaignIds, ...getDateFilterParams() })
-            });
-            if (!response.ok) throw new Error('Lỗi mạng');
-            const adsets = await response.json();
-            const options = adsets.map(a => ({ id: a.adset_id, text: a.name }));
-            callback(options);
-            tsAdsets.setPlaceholder('Chọn nhóm quảng cáo...');
-        } catch (error) {
-            console.error('Lỗi tải nhóm QC:', error);
-            callback([]);
-            tsAdsets.setPlaceholder('Lỗi tải nhóm QC');
-        }
-    });
+    try {
+        const response = await fetch('/api/adsets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaign_ids: campaignIds, ...getDateFilterParams() })
+        });
+        if (!response.ok) throw new Error('Lỗi mạng');
+        const adsets = await response.json();
+        const options = adsets.map(a => ({ id: a.adset_id, text: a.name }));
+        tsAdsets.addOptions(options);
+        tsAdsets.enable();
+        tsAdsets.control_input.placeholder = 'Chọn nhóm quảng cáo...';
+    } catch (error) {
+        console.error('Lỗi tải nhóm QC:', error);
+        tsAdsets.enable();
+        tsAdsets.control_input.placeholder = 'Lỗi tải nhóm QC...';
+    }
 }
 
 async function loadAdDropdown(adsetIds) {
     resetDropdown(tsAds, 'Đang tải quảng cáo...');
-    tsAds.enable();
-    tsAds.load(async (callback) => {
-        try {
-            const response = await fetch('/api/ads', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ adset_ids: adsetIds, ...getDateFilterParams() })
-            });
-            if (!response.ok) throw new Error('Lỗi mạng');
-            const ads = await response.json();
-            const options = ads.map(ad => ({ id: ad.ad_id, text: ad.name }));
-            callback(options);
-            tsAds.setPlaceholder('Chọn quảng cáo...');
-        } catch (error) {
-            console.error('Lỗi tải quảng cáo:', error);
-            callback([]);
-            tsAds.setPlaceholder('Lỗi tải quảng cáo');
-        }
-    });
+    try {
+        const response = await fetch('/api/ads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adset_ids: adsetIds, ...getDateFilterParams() })
+        });
+        if (!response.ok) throw new Error('Lỗi mạng');
+        const ads = await response.json();
+        const options = ads.map(ad => ({ id: ad.ad_id, text: ad.name }));
+        tsAds.addOptions(options);
+        tsAds.enable();
+        tsAds.control_input.placeholder = 'Chọn quảng cáo...';
+    } catch (error) {
+        console.error('Lỗi tải quảng cáo:', error);
+        tsAds.enable();
+        tsAds.control_input.placeholder = 'Lỗi tải quảng cáo...';
+    }
 }
 
 
@@ -532,7 +528,7 @@ function populateDropdown(tomSelectInstance, data, placeholder, valueKey, nameKe
     }));
     
     // Tom Select không dùng 'all'. Placeholder sẽ xử lý việc "Tất cả"
-    tomSelectInstance.setPlaceholder(placeholder);
+    tomSelectInstance.control_input.placeholder = placeholder;
 
     tomSelectInstance.addOptions(options);
     tomSelectInstance.refreshOptions(false);
@@ -545,7 +541,7 @@ function resetDropdown(tomSelectInstance, placeholder) {
     if (tomSelectInstance) {
         tomSelectInstance.clear(true);
         tomSelectInstance.clearOptions();
-        tomSelectInstance.setPlaceholder(placeholder);
+        tomSelectInstance.control_input.placeholder = placeholder;
         tomSelectInstance.disable();
     }
 }
@@ -591,7 +587,7 @@ function showNotification(message, type = 'info') {
 function triggerCampaignLoad() {
     const accountId = tsAccount.getValue();
     const dateParams = getDateFilterParams();
-    
+    console.log("triggerCampaignLoad được gọi. Giá trị dateParams:", dateParams);
     // Reset các dropdown con
     resetDropdown(tsCampaigns, 'Chọn chiến dịch...');
     resetDropdown(tsAdsets, 'Chọn nhóm quảng cáo...');
