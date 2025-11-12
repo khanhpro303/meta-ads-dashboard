@@ -1,47 +1,29 @@
 /**
- * main.js (Phiên bản Multi-select)
+ * main.js
  * File JavaScript chính cho Meta Ads Dashboard
- * * * Chức năng:
- * 1. Khởi tạo biểu đồ (với dữ liệu rỗng).
- * 2. Khởi tạo Tom Select cho multi-select dropdowns.
- * 3. Tải danh sách tài khoản, chiến dịch, adset, ad (dropdowns phụ thuộc).
- * 4. Xử lý logic của bộ lọc (filters), bao gồm ẩn/hiện ngày tùy chỉnh.
- * 5. Gắn hành động cho nút "Làm mới" (gọi /api/refresh).
- * 6. Gắn hành động cho nút "Áp dụng" (gọi /api/overview_data và /api/chart_data).
- * 7. Render (vẽ) dữ liệu trả về lên các thẻ KPI, bảng, và biểu đồ.
+ * Chức năng:
+ * 1. Khởi tạo các dropdown (Tom Select) và biểu đồ.
+ * 2. Tải dữ liệu động cho các dropdown phụ thuộc (cascading).
+ * 3. Xử lý logic bộ lọc và các nút bấm ("Làm mới", "Áp dụng").
+ * 4. Render dữ liệu lên giao diện (KPIs, biểu đồ, bảng).
  */
 
-// --- BIẾN TOÀN CỤC CHO BIỂU ĐỒ & DROPDOWNS ---
+// --- BIẾN TOÀN CỤC ---
 let spendTrendChartInstance = null;
 let platformChartInstance = null;
+let tsAccount, tsTime, tsCampaigns, tsAdsets, tsAds;
 
-// Biến lưu trữ các instance của Tom Select
-let tsAccount = null;
-// let tsBrand = null; // Tạm thời vô hiệu hóa Brand
-let tsTime = null;
-let tsCampaigns = null;
-let tsAdsets = null;
-let tsAds = null;
-
-// --- HÀM KHỞI TẠO (CHẠY KHI TẢI TRANG) ---
+// --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Kích hoạt icon
     feather.replace();
-
-    // Khởi tạo các biểu đồ (với dữ liệu rỗng)
     initializeCharts();
-    
-    // Khởi tạo Tom Select cho các dropdown
     initializeTomSelect();
-
-    // Gắn các trình xử lý sự kiện (event listeners)
     setupEventListeners();
-
-    // Tải dữ liệu ban đầu cho dropdown tài khoản
-    loadAccountDropdown();
+    loadAccountDropdown(); // Tải tài khoản ngay khi bắt đầu
 });
 
-// --- KHỞI TẠO BIỂU ĐỒ ---
+// --- KHỞI TẠO GIAO DIỆN ---
+
 function initializeCharts() {
     // 1. Biểu đồ đường (Spend & Impressions)
     const ctxSpend = document.getElementById('spendTrendChart').getContext('2d');
@@ -92,56 +74,47 @@ function initializeCharts() {
  * Khởi tạo Tom Select cho các dropdown
  */
 function initializeTomSelect() {
+    // Cài đặt cho dropdown chọn MỘT
     const singleSelectSettings = (placeholder) => ({
         create: false,
-        placeholder: placeholder
+        placeholder: placeholder,
     });
-    
+
+    // Cài đặt cho dropdown chọn NHIỀU
     const multiSelectSettings = (placeholder) => ({
-        plugins: ['remove_button'],
-        maxItems: 20, // Cho phép chọn tối đa 20 mục
+        plugins: ['remove_button', 'checkbox_options'], // Thêm checkbox cho dễ nhìn
         create: false,
-        placeholder: placeholder
+        placeholder: placeholder,
     });
 
-    // Account (Single select)
+    // 1. Dropdown Tài khoản (chọn một)
     tsAccount = new TomSelect('#filter-ad-account', singleSelectSettings('Chọn tài khoản...'));
-    
-    // Time (Single select)
-    tsTime = new TomSelect('#filter-time', {
-        ...singleSelectSettings('30 ngày qua'),
-        allowEmptyOption: false
-    });
-    
-    // Brand (Tạm thời vô hiệu hóa)
-    // tsBrand = new TomSelect('#filter-brand', multiSelectSettings('Tất cả Brand...'));
-    // tsBrand.disable(); 
 
-    // Campaigns (Multi-select)
-    tsCampaigns = new TomSelect('#filter-campaigns', multiSelectSettings('Tất cả Campaigns...'));
+    // 2. Dropdown Thời gian (chọn một)
+    tsTime = new TomSelect('#filter-time', { ...singleSelectSettings(), allowEmptyOption: false });
 
-    // Adsets (Multi-select)
-    tsAdsets = new TomSelect('#filter-adsets', multiSelectSettings('Tất cả Adsets...'));
+    // 3. Dropdown Chiến dịch (chọn nhiều)
+    tsCampaigns = new TomSelect('#filter-campaigns', multiSelectSettings('Chọn chiến dịch...'));
 
-    // Ads (Multi-select)
-    tsAds = new TomSelect('#filter-ads', multiSelectSettings('Tất cả Ads...'));
+    // Các dropdown con khác
+    tsAdsets = new TomSelect('#filter-adsets', multiSelectSettings('Chọn nhóm quảng cáo...'));
+    tsAds = new TomSelect('#filter-ads', multiSelectSettings('Chọn quảng cáo...'));
 
-    // Vô hiệu hóa các dropdown phụ thuộc ban đầu
+    // Vô hiệu hóa các dropdown con ban đầu
     tsCampaigns.disable();
     tsAdsets.disable();
     tsAds.disable();
 }
 
+// --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
 
-// --- GẮN SỰ KIỆN ---
 function setupEventListeners() {
-    // 1. Nút "Làm mới" (đổi ID từ file HTML của bạn)
     document.getElementById('btn-refresh-data').addEventListener('click', handleRefreshData);
-
-    // 2. Nút "Áp dụng"
     document.getElementById('btn-apply-filters').addEventListener('click', handleApplyFilters);
 
-    // 3. Logic Ẩn/Hiện Ngày Tùy Chỉnh
+    /**
+     * Yêu cầu 2: Khi chọn thời gian là "Tùy chỉnh", hiện ra bảng chọn ngày
+     */
     tsTime.on('change', (value) => {
         const customDateRange = document.getElementById('custom-date-range');
         if (value === 'custom') {
@@ -149,56 +122,37 @@ function setupEventListeners() {
         } else {
             customDateRange.classList.add('hidden');
         }
-        
-        // Khi thời gian thay đổi, kích hoạt tải lại Campaigns
+        // Khi thời gian thay đổi, tải lại danh sách chiến dịch
         triggerCampaignLoad();
     });
 
-    // 4. Logic Dropdown Phụ Thuộc (dùng Tom Select 'change' event)
-    tsAccount.on('change', (value) => {
-        const accountId = value;
-        // Reset các cấp con trước khi tải
-        resetDropdown(tsCampaigns, 'Đang tải Campaigns...');
-        resetDropdown(tsAdsets, 'Chọn Chiến dịch trước');
-        resetDropdown(tsAds, 'Chọn Adset trước');
-
-        if (accountId) {
-            loadCampaignDropdown(accountId);
-            tsCampaigns.enable();
-        }
+    /**
+     * Yêu cầu 3: Khi chọn tài khoản, tải lại danh sách chiến dịch
+     */
+    tsAccount.on('change', () => {
+        triggerCampaignLoad();
     });
-    
-    tsCampaigns.on('change', (value) => {
-        // 'value' bây giờ là một MẢNG (array), ví dụ: ['123', '456']
-        resetDropdown(tsAdsets, 'Đang tải Adsets...');
-        resetDropdown(tsAds, 'Chọn Adset trước');
 
-        if (value && value.length > 0) {
-            loadAdsetDropdown(value); // Gửi mảng IDs
+    // Logic dropdown phụ thuộc (cascading)
+    tsCampaigns.on('change', (selectedCampaigns) => {
+        resetDropdown(tsAdsets, 'Chọn nhóm quảng cáo...');
+        resetDropdown(tsAds, 'Chọn quảng cáo...');
+        if (selectedCampaigns && selectedCampaigns.length > 0) {
+            loadAdsetDropdown(selectedCampaigns);
             tsAdsets.enable();
-        } else {
-            resetDropdown(tsAdsets, 'Chọn Chiến dịch trước');
         }
     });
-    
-    tsAdsets.on('change', (value) => {
-        // 'value' cũng là một mảng
-        resetDropdown(tsAds, 'Đang tải Ads...');
 
-        if (value && value.length > 0) {
-            loadAdDropdown(value); // Gửi mảng IDs
+    tsAdsets.on('change', (selectedAdsets) => {
+        resetDropdown(tsAds, 'Chọn quảng cáo...');
+        if (selectedAdsets && selectedAdsets.length > 0) {
+            loadAdDropdown(selectedAdsets);
             tsAds.enable();
-        } else {
-            resetDropdown(tsAds, 'Chọn Adset trước');
         }
     });
-    
-    // (Tùy chọn) Kích hoạt tải lại Campaigns khi ngày tùy chỉnh thay đổi
-    document.getElementById('date-from').addEventListener('change', triggerCampaignLoad);
-    document.getElementById('date-to').addEventListener('change', triggerCampaignLoad);
 }
 
-// --- LOGIC CHÍNH ---
+// --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
 
 /**
  * Task 1: Xử lý nút "Làm mới"
@@ -306,86 +260,98 @@ async function handleApplyFilters() {
 // --- CÁC HÀM TẢI DROPDOWN (ĐÃ CẬP NHẬT CHO TOM SELECT) ---
 
 async function loadAccountDropdown() {
-    try {
-        const response = await fetch('/api/accounts');
-        if (!response.ok) throw new Error('Lỗi tải tài khoản');
-        const accounts = await response.json();
-        
-        populateDropdown(tsAccount, accounts, 'Chọn tài khoản...', 'id', 'name', false); // false = không có "Tất cả"
-
-    } catch (error) {
-        console.error('Lỗi tải Account dropdown:', error);
-        resetDropdown(tsAccount, 'Lỗi tải tài khoản', false);
-    }
+    tsAccount.clear();
+    tsAccount.clearOptions();
+    tsAccount.load(async (callback) => {
+        tsAccount.disable();
+        try {
+            const response = await fetch('/api/accounts');
+            if (!response.ok) throw new Error('Lỗi mạng');
+            const accounts = await response.json();
+            // Đổi key 'ad_account_id' thành 'id' và 'name' thành 'text' cho Tom-Select
+            const options = accounts.map(c => ({ id: c.id, text: c.name }));
+            tsAccount.enable();
+            callback(options);
+            // Tự động chọn tài khoản đầu tiên và tải campaign cho nó
+            if (options.length > 0) {
+                tsAccount.setValue(options[0].id);
+            }
+        } catch (error) {
+            console.error('Lỗi tải tài khoản:', error);
+            tsAccount.enable();
+            callback([]);
+        }
+    });
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
-    try {
-        const response = await fetch('/api/campaigns', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                'account_id': accountId,
-                ...dateParams
-            })
-        });
-        if (!response.ok) throw new Error('Lỗi tải chiến dịch');
-        const campaigns = await response.json();
-        
-        populateDropdown(tsCampaigns, campaigns, 'Tất cả Campaigns...', 'campaign_id', 'name', true);
-
-    } catch (error) {
-        console.error('Lỗi tải Campaign dropdown:', error);
-        resetDropdown(tsCampaigns, 'Lỗi tải chiến dịch', true);
-    }
+    resetDropdown(tsCampaigns, 'Đang tải chiến dịch...');
+    tsCampaigns.enable();
+    tsCampaigns.load(async (callback) => {
+        try {
+            const response = await fetch('/api/campaigns', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_id: accountId, ...dateParams })
+            });
+            if (!response.ok) throw new Error('Lỗi mạng');
+            const campaigns = await response.json();
+            // Đổi key 'campaign_id' thành 'id' và 'name' thành 'text' cho Tom-Select
+            const options = campaigns.map(c => ({ id: c.campaign_id, text: c.name }));
+            callback(options);
+            tsCampaigns.setPlaceholder('Chọn chiến dịch...');
+        } catch (error) {
+            console.error('Lỗi tải chiến dịch:', error);
+            callback([]);
+            tsCampaigns.setPlaceholder('Lỗi tải chiến dịch');
+        }
+    });
 }
 
 async function loadAdsetDropdown(campaignIds) {
-    try {
-        const dateParams = getDateFilterParams(true);
-        if (!dateParams) return; 
-
-        const response = await fetch('/api/adsets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                'campaign_ids': campaignIds, // Gửi mảng
-                ...dateParams
-            })
-        });
-        if (!response.ok) throw new Error('Lỗi tải Adset');
-        const adsets = await response.json();
-        
-        populateDropdown(tsAdsets, adsets, 'Tất cả Adsets...', 'adset_id', 'name', true);
-
-    } catch (error) {
-        console.error('Lỗi tải Adset dropdown:', error);
-        resetDropdown(tsAdsets, 'Lỗi tải Adset', true);
-    }
+    resetDropdown(tsAdsets, 'Đang tải nhóm QC...');
+    tsAdsets.enable();
+    tsAdsets.load(async (callback) => {
+        try {
+            const response = await fetch('/api/adsets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaign_ids: campaignIds, ...getDateFilterParams() })
+            });
+            if (!response.ok) throw new Error('Lỗi mạng');
+            const adsets = await response.json();
+            const options = adsets.map(a => ({ id: a.adset_id, text: a.name }));
+            callback(options);
+            tsAdsets.setPlaceholder('Chọn nhóm quảng cáo...');
+        } catch (error) {
+            console.error('Lỗi tải nhóm QC:', error);
+            callback([]);
+            tsAdsets.setPlaceholder('Lỗi tải nhóm QC');
+        }
+    });
 }
 
 async function loadAdDropdown(adsetIds) {
-    try {
-        const dateParams = getDateFilterParams(true);
-        if (!dateParams) return;
-
-        const response = await fetch('/api/ads', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                'adset_ids': adsetIds, // Gửi mảng
-                ...dateParams
-            })
-        });
-        if (!response.ok) throw new Error('Lỗi tải Ads');
-        const ads = await response.json();
-        
-        populateDropdown(tsAds, ads, 'Tất cả Ads...', 'ad_id', 'name', true);
-
-    } catch (error) {
-        console.error('Lỗi tải Ad dropdown:', error);
-        resetDropdown(tsAds, 'Lỗi tải Ads', true);
-    }
+    resetDropdown(tsAds, 'Đang tải quảng cáo...');
+    tsAds.enable();
+    tsAds.load(async (callback) => {
+        try {
+            const response = await fetch('/api/ads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ adset_ids: adsetIds, ...getDateFilterParams() })
+            });
+            if (!response.ok) throw new Error('Lỗi mạng');
+            const ads = await response.json();
+            const options = ads.map(ad => ({ id: ad.ad_id, text: ad.name }));
+            callback(options);
+            tsAds.setPlaceholder('Chọn quảng cáo...');
+        } catch (error) {
+            console.error('Lỗi tải quảng cáo:', error);
+            callback([]);
+            tsAds.setPlaceholder('Lỗi tải quảng cáo');
+        }
+    });
 }
 
 
@@ -560,10 +526,12 @@ function populateDropdown(tomSelectInstance, data, placeholder, valueKey, nameKe
  * Helper để reset và vô hiệu hóa Tom Select
  */
 function resetDropdown(tomSelectInstance, placeholder) {
-    tomSelectInstance.clearOptions();
-    tomSelectInstance.clear(); // Xóa các giá trị đã chọn
-    tomSelectInstance.setPlaceholder(placeholder);
-    tomSelectInstance.disable();
+    if (tomSelectInstance) {
+        tomSelectInstance.clear();
+        tomSelectInstance.clearOptions();
+        tomSelectInstance.setPlaceholder(placeholder);
+        tomSelectInstance.disable();
+    }
 }
 
 /**
@@ -597,5 +565,24 @@ function showNotification(message, type = 'info') {
     } else {
         console.log(message);
         alert(message);
+    }
+}
+
+/**
+ * Kích hoạt việc tải lại dropdown Campaigns.
+ * Đây là hàm trung gian để gom logic lấy account_id và dateParams.
+ */
+function triggerCampaignLoad() {
+    const accountId = tsAccount.getValue();
+    const dateParams = getDateFilterParams();
+    
+    // Reset các dropdown con
+    resetDropdown(tsCampaigns, 'Chọn chiến dịch...');
+    resetDropdown(tsAdsets, 'Chọn nhóm quảng cáo...');
+    resetDropdown(tsAds, 'Chọn quảng cáo...');
+
+    if (accountId && dateParams) {
+        loadCampaignDropdown(accountId, dateParams);
+        tsCampaigns.enable();
     }
 }
