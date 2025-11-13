@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     feather.replace();
     initializeCharts();
-    initializeSelect2(); // Đổi tên hàm
+    initializeSelect2();
     setupEventListeners();
     loadAccountDropdown(); // Tải tài khoản ngay khi bắt đầu
 });
@@ -24,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- KHỞI TẠO GIAO DIỆN ---
 
 function initializeCharts() {
-    // ... (Giữ nguyên, không thay đổi)
     const ctxSpend = document.getElementById('spendTrendChart').getContext('2d');
     spendTrendChartInstance = new Chart(ctxSpend, {
         type: 'line',
@@ -32,6 +31,11 @@ function initializeCharts() {
         options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
+            elements: {
+                line: {
+                    fill: true // Bật tính năng "fill" (lấp đầy)
+                }
+            },
             scales: {
                 y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Chi tiêu (Spend)' } },
                 y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Hiển thị (Impressions)' }, grid: { drawOnChartArea: false } },
@@ -64,7 +68,7 @@ function initializeSelect2() {
     const multiSelectSettings = (placeholder) => ({
         placeholder: placeholder,
         closeOnSelect: false, // Giữ dropdown mở khi chọn
-        allowClear: true // Hiển thị nút 'x' để xóa
+        maximumSelectionLength: 1 //
     });
 
     // 1. Dropdown Tài khoản (chọn một)
@@ -79,19 +83,16 @@ function initializeSelect2() {
     const campaignPlaceholder = 'Chọn chiến dịch...';
     s2Campaigns = $('#filter-campaigns').select2(multiSelectSettings(campaignPlaceholder));
     setupSelectAll(s2Campaigns, 'campaigns-all'); // Thêm logic "Chọn tất cả"
-    setupSelectionCounter(s2Campaigns);
 
     // Các dropdown con khác
     const adsetPlaceholder = 'Chọn nhóm quảng cáo...';
     s2Adsets = $('#filter-adsets').select2(multiSelectSettings(adsetPlaceholder));
     setupSelectAll(s2Adsets, 'adsets-all');
-    setupSelectionCounter(s2Adsets);
 
     const adPlaceholder = 'Chọn quảng cáo...';
     s2Ads = $('#filter-ads').select2(multiSelectSettings(adPlaceholder));
     setupSelectAll(s2Ads, 'ads-all');
-    setupSelectionCounter(s2Ads);
-    
+
     // Vô hiệu hóa các dropdown con ban đầu
     s2Campaigns.prop('disabled', true).trigger('change');
     s2Adsets.prop('disabled', true).trigger('change');
@@ -247,11 +248,19 @@ async function loadAccountDropdown() {
         s2Account.empty(); // Xóa "Đang tải"
 
         // [QUAN TRỌNG] Thêm option rỗng cho placeholder
-        s2Account.append(new Option('', '', true, true));
+        s2Account.append(new Option('', '', false, false));
         
         // Thêm option vào
         accounts.forEach(c => {
-            const option = new Option(c.name, c.id);
+            // Lấy 4 số cuối của ID
+            const idString = String(c.id);
+            const lastFourDigits = idString.slice(-4);
+            
+            // Tạo text mới, ví dụ: "BBI2025 (1234)"
+            const newText = `${c.name} (${lastFourDigits})`;
+            
+            // Tạo option với text mới, nhưng value vẫn là ID đầy đủ
+            const option = new Option(newText, c.id);
             s2Account.append(option);
         });
 
@@ -281,9 +290,6 @@ async function loadCampaignDropdown(accountId, dateParams) {
         const campaigns = await response.json();
 
         s2Campaigns.empty(); // Xóa "Đang tải"
-
-        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
-        s2Campaigns.append(new Option('', '', true, true));
 
         // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
         if (campaigns.length > 0) {
@@ -324,9 +330,6 @@ async function loadAdsetDropdown(campaignIds) {
         
         s2Adsets.empty(); // Xóa "Đang tải"
 
-        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
-        s2Adsets.append(new Option('', '', true, true));
-
         // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
         if (adsets.length > 0) {
             const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
@@ -362,9 +365,6 @@ async function loadAdDropdown(adsetIds) {
         const ads = await response.json();
         
         s2Ads.empty(); // Xóa "Đang tải"
-
-        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
-        s2Ads.append(new Option('', '', true, true));
 
         // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
         if (ads.length > 0) {
@@ -523,12 +523,9 @@ function getDateFilterParams(forRefresh = false) {
 function resetDropdown(select2Instance, placeholder) {
     if (select2Instance) {
         select2Instance.empty(); // Xóa tất cả <option>
-
-        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
-        select2Instance.append(new Option('', '', true, true));
         
         // Thêm một option "placeholder" tạm thời khi đang tải/reset
-        const tempOption = new Option(placeholder, '', true, true);
+        const tempOption = new Option(placeholder, 'loading', false, false);
         tempOption.disabled = true;
         select2Instance.append(tempOption);
         
@@ -651,39 +648,4 @@ function setupSelectAll($select2Instance, allId) {
              $('.select2-results__option[id="' + allId + '"]').addClass('select2-results__option--all');
         }, 0);
     });
-}
-
-/**
- * [MỚI] Thêm một badge đếm số lượng vào bên phải ô Select2
- * @param {jQuery} $select2Instance - Đối tượng jQuery của thẻ <select>
- */
-function setupSelectionCounter($select2Instance) {
-    // Tìm container .select2-container (là anh em 'next' của thẻ <select>)
-    const $container = $select2Instance.next('.select2-container');
-    
-    // 1. Tạo element badge đếm số 1 lần duy nhất
-    const $counter = $('<span class="select2-selection-counter"></span>');
-    $container.append($counter); // Gắn vào container
-    $counter.hide(); // Ẩn đi lúc đầu
-
-    // 2. Tạo hàm helper để cập nhật
-    const updateCounter = () => {
-        const values = $select2Instance.val() || [];
-        
-        // [QUAN TRỌNG] Đếm số lượng, LỌC BỎ giá trị 'all'
-        const count = values.filter(id => id !== 'all').length; 
-
-        if (count > 0) {
-            $counter.text(count); // Cập nhật số
-            $counter.show();
-        } else {
-            $counter.hide();
-        }
-    };
-
-    // 3. Gắn hàm cập nhật vào sự kiện 'change'
-    $select2Instance.on('change', updateCounter);
-    
-    // 4. Chạy 1 lần lúc khởi tạo (để đảm bảo)
-    updateCounter();
 }

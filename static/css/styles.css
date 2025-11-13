@@ -27,24 +27,22 @@
     color: #1e40af !important; /* Màu blue-800 của Tailwind */
     font-weight: 600;
 }
-.select2-selection-counter {
-    position: absolute;
-    top: 50%;
-    /* Đặt bên phải, chừa chỗ cho nút 'x' (allowClear) */
-    right: 35px; 
-    transform: translateY(-50%);
-    
-    background-color: #007bff; /* Màu xanh nổi bật */
-    color: white;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 10px;
-    z-index: 50; /* Nằm trên các badge cuộn */
-    
-    /* Chặn không cho người dùng vô tình chọn text */
-    -webkit-user-select: none;
-    user-select: none;
+/* * Fix lỗi conflict CSS:
+ * Ghi đè CSS của Select2 để item đã chọn (selected) 
+ * có nền trắng (không bị xám), chỉ tô đậm.
+ */
+.select2-container--default .select2-results__option--selected {
+    background-color: #fff; /* Trả về nền trắng */
+    color: #333; /* Trả về màu chữ mặc định */
+    font-weight: 600; /* Giữ lại (hoặc thêm) tô đậm */
+}
+
+/* * Khi một item vừa được CHỌN (selected) VỪA được LƯỚT QUA (highlighted)
+ * Ta muốn nó có màu xanh (hoặc màu hover)
+ */
+.select2-container--default .select2-results__option--highlighted.select2-results__option--selected {
+    background-color: #5897fb; /* Màu hover mặc định của Select2 */
+    color: #fff; /* Màu chữ trắng khi hover */
 }
 @layer properties;
 @layer theme, base, components, utilities;

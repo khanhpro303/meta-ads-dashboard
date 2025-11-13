@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
+from matplotlib.dates import relativedelta
 from sqlalchemy import func, select, and_
 
 # Import các lớp từ database_manager
@@ -40,16 +41,16 @@ def _calculate_date_range(date_preset: str, today: datetime.date = None) -> tupl
     if date_preset == 'today':
         start_date = end_date = today
     elif date_preset == 'yesterday':
-        start_date = end_date = today - timedelta(days=1)
+        start_date = end_date = today - relativedelta(days=1)
     elif date_preset in ['last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d']:
         days = int(date_preset.replace('last_', '').replace('d', ''))
-        start_date = today - timedelta(days=days - 1)
+        start_date = today - relativedelta(days=days - 1)
         end_date = today
     elif date_preset == 'this_week_mon_today':
-        start_date = today - timedelta(days=today.weekday())
+        start_date = today - relativedelta(days=today.weekday())
         end_date = today
     elif date_preset == 'this_week_sun_today':
-        start_date = today - timedelta(days=(today.weekday() + 1) % 7)
+        start_date = today - relativedelta(days=(today.weekday() + 1) % 7)
         end_date = today
     elif date_preset == 'this_month':
         start_date = today.replace(day=1)
@@ -62,26 +63,26 @@ def _calculate_date_range(date_preset: str, today: datetime.date = None) -> tupl
         start_date = today.replace(month=1, day=1)
         end_date = today
     elif date_preset == 'last_week_mon_sun':
-        end_of_last_week = today - timedelta(days=today.weekday() + 1)
-        start_of_last_week = end_of_last_week - timedelta(days=6)
+        end_of_last_week = today - relativedelta(days=today.weekday() + 1)
+        start_of_last_week = end_of_last_week - relativedelta(days=6)
         start_date, end_date = start_of_last_week, end_of_last_week
     elif date_preset == 'last_week_sun_sat':
-        end_of_last_week = today - timedelta(days=(today.weekday() + 1) % 7 + 1)
-        start_of_last_week = end_of_last_week - timedelta(days=6)
+        end_of_last_week = today - relativedelta(days=(today.weekday() + 1) % 7 + 1)
+        start_of_last_week = end_of_last_week - relativedelta(days=6)
         start_date, end_date = start_of_last_week, end_of_last_week
     elif date_preset == 'last_month':
         first_day_this_month = today.replace(day=1)
-        end_date = first_day_this_month - timedelta(days=1)
+        end_date = first_day_this_month - relativedelta(days=1)
         start_date = end_date.replace(day=1)
     elif date_preset == 'last_quarter':
         current_quarter_start_month = (today.month - 1) // 3 * 3 + 1
         first_day_this_quarter = today.replace(month=current_quarter_start_month, day=1)
-        end_date = first_day_this_quarter - timedelta(days=1)
+        end_date = first_day_this_quarter - relativedelta(days=1)
         last_quarter_start_month = (end_date.month - 1) // 3 * 3 + 1
         start_date = end_date.replace(month=last_quarter_start_month, day=1)
     elif date_preset == 'last_year':
         first_day_this_year = today.replace(month=1, day=1)
-        end_date = first_day_this_year - timedelta(days=1)
+        end_date = first_day_this_year - relativedelta(days=1)
         start_date = end_date.replace(month=1, day=1)
     elif date_preset in ['maximum', 'data_maximum']:
         # Trả về None để không áp dụng bộ lọc ngày
