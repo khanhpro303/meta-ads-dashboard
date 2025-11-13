@@ -1,23 +1,22 @@
 /**
  * main.js
  * File JavaScript chính cho Meta Ads Dashboard
- * Chức năng:
- * 1. Khởi tạo các dropdown (Tom Select) và biểu đồ.
- * 2. Tải dữ liệu động cho các dropdown phụ thuộc (cascading).
- * 3. Xử lý logic bộ lọc và các nút bấm ("Làm mới", "Áp dụng").
- * 4. Render dữ liệu lên giao diện (KPIs, biểu đồ, bảng).
+ * Đã chuyển đổi hoàn toàn sang jQuery + Select2.
  */
 
-// --- BIẾN TOÀN CỤC ---
+// --- BIẾN TOÀN CỤC (đã đổi tên s2 = Select2) ---
 let spendTrendChartInstance = null;
 let platformChartInstance = null;
-let tsAccount, tsTime, tsCampaigns, tsAdsets, tsAds;
+let s2Account, s2Time, s2Campaigns, s2Adsets, s2Ads;
 
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Phải đợi DOM load xong mới chạy code jQuery
+    // nên toàn bộ code sẽ nằm trong này
+    
     feather.replace();
     initializeCharts();
-    initializeTomSelect();
+    initializeSelect2(); // Đổi tên hàm
     setupEventListeners();
     loadAccountDropdown(); // Tải tài khoản ngay khi bắt đầu
 });
@@ -25,151 +24,135 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- KHỞI TẠO GIAO DIỆN ---
 
 function initializeCharts() {
-    // 1. Biểu đồ đường (Spend & Impressions)
+    // ... (Giữ nguyên, không thay đổi)
     const ctxSpend = document.getElementById('spendTrendChart').getContext('2d');
     spendTrendChartInstance = new Chart(ctxSpend, {
         type: 'line',
-        data: { labels: [], datasets: [] }, // Dữ liệu rỗng
+        data: { labels: [], datasets: [] },
         options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
             scales: {
-                y: {
-                    type: 'linear', display: true, position: 'left',
-                    title: { display: true, text: 'Chi tiêu (Spend)' }
-                },
-                y1: {
-                    type: 'linear', display: true, position: 'right',
-                    title: { display: true, text: 'Hiển thị (Impressions)' },
-                    grid: { drawOnChartArea: false },
-                },
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Chi tiêu (Spend)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Hiển thị (Impressions)' }, grid: { drawOnChartArea: false } },
             }
         }
     });
-
-    // 2. Biểu đồ tròn (Platform)
     const ctxPlatform = document.getElementById('platformChart').getContext('2d');
     platformChartInstance = new Chart(ctxPlatform, {
         type: 'doughnut',
         data: {
             labels: ['Chưa có dữ liệu'],
-            datasets: [{
-                label: 'Phân bổ',
-                data: [1],
-                backgroundColor: ['#E5E7EB'], // Màu xám
-                hoverOffset: 4
-            }]
+            datasets: [{ label: 'Phân bổ', data: [1], backgroundColor: ['#E5E7EB'], hoverOffset: 4 }]
         },
         options: {
             responsive: true,
-            plugins: {
-                legend: { position: 'bottom' },
-                title: { display: true, text: 'Vui lòng áp dụng bộ lọc' }
-            }
+            plugins: { legend: { position: 'bottom' }, title: { display: true, text: 'Vui lòng áp dụng bộ lọc' } }
         }
     });
 }
 
 /**
- * Khởi tạo Tom Select cho các dropdown
+ * Khởi tạo Select2 cho các dropdown
  */
-function initializeTomSelect() {
-    const tomSelectSettings = {
-        create: false,
-        valueField: 'id',    // Báo TomSelect dùng trường 'id' làm giá trị
-        labelField: 'text',  // Báo TomSelect dùng trường 'text' làm nhãn
-        searchField: 'text'  // Cho phép tìm kiếm bằng trường 'text'
-    };
-    // Cài đặt cho dropdown chọn MỘT
+function initializeSelect2() {
+    // Cài đặt chung
     const singleSelectSettings = (placeholder) => ({
-        ...tomSelectSettings,
         placeholder: placeholder,
     });
 
-    // Cài đặt cho dropdown chọn NHIỀU
     const multiSelectSettings = (placeholder) => ({
-        plugins: ['remove_button', 'checkbox_options'], // Thêm checkbox cho dễ nhìn
-        ...tomSelectSettings,
         placeholder: placeholder,
+        closeOnSelect: false, // Giữ dropdown mở khi chọn
+        allowClear: true // Hiển thị nút 'x' để xóa
     });
 
     // 1. Dropdown Tài khoản (chọn một)
-    tsAccount = new TomSelect('#filter-ad-account', singleSelectSettings('Chọn tài khoản...'));
+    s2Account = $('#filter-ad-account').select2(singleSelectSettings('Chọn tài khoản...'));
 
     // 2. Dropdown Thời gian (chọn một)
-    tsTime = new TomSelect('#filter-time', { ...singleSelectSettings(), allowEmptyOption: false });
+    s2Time = $('#filter-time').select2({
+        minimumResultsForSearch: Infinity // Ẩn ô tìm kiếm
+    });
 
     // 3. Dropdown Chiến dịch (chọn nhiều)
-    tsCampaigns = new TomSelect('#filter-campaigns', multiSelectSettings('Chọn chiến dịch...'));
+    const campaignPlaceholder = 'Chọn chiến dịch...';
+    s2Campaigns = $('#filter-campaigns').select2(multiSelectSettings(campaignPlaceholder));
+    setupSelectAll(s2Campaigns, 'campaigns-all'); // Thêm logic "Chọn tất cả"
+    setupSelectionCounter(s2Campaigns);
 
     // Các dropdown con khác
-    tsAdsets = new TomSelect('#filter-adsets', multiSelectSettings('Chọn nhóm quảng cáo...'));
-    tsAds = new TomSelect('#filter-ads', multiSelectSettings('Chọn quảng cáo...'));
+    const adsetPlaceholder = 'Chọn nhóm quảng cáo...';
+    s2Adsets = $('#filter-adsets').select2(multiSelectSettings(adsetPlaceholder));
+    setupSelectAll(s2Adsets, 'adsets-all');
+    setupSelectionCounter(s2Adsets);
 
+    const adPlaceholder = 'Chọn quảng cáo...';
+    s2Ads = $('#filter-ads').select2(multiSelectSettings(adPlaceholder));
+    setupSelectAll(s2Ads, 'ads-all');
+    setupSelectionCounter(s2Ads);
+    
     // Vô hiệu hóa các dropdown con ban đầu
-    tsCampaigns.disable();
-    tsAdsets.disable();
-    tsAds.disable();
+    s2Campaigns.prop('disabled', true).trigger('change');
+    s2Adsets.prop('disabled', true).trigger('change');
+    s2Ads.prop('disabled', true).trigger('change');
 }
 
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
 
 function setupEventListeners() {
-    document.getElementById('btn-refresh-data').addEventListener('click', handleRefreshData);
-    document.getElementById('btn-apply-filters').addEventListener('click', handleApplyFilters);
+    $('#btn-refresh-data').on('click', handleRefreshData);
+    $('#btn-apply-filters').on('click', handleApplyFilters);
 
-    /**
-     * Yêu cầu 2: Khi chọn thời gian là "Tùy chỉnh", hiện ra bảng chọn ngày
-     */
-    tsTime.on('change', (value) => {
+    s2Time.on('change', (e) => {
+        const value = $(e.currentTarget).val();
         const customDateRange = document.getElementById('custom-date-range');
         if (value === 'custom') {
             customDateRange.classList.remove('hidden');
         } else {
             customDateRange.classList.add('hidden');
         }
-        // Khi thời gian thay đổi, tải lại danh sách chiến dịch
         triggerCampaignLoad();
     });
 
-    /**
-     * Yêu cầu 3: Khi chọn tài khoản, tải lại danh sách chiến dịch
-     */
-    tsAccount.on('change', () => {
+    s2Account.on('change', () => {
         triggerCampaignLoad();
     });
 
     // Logic dropdown phụ thuộc (cascading)
-    tsCampaigns.on('change', (selectedCampaigns) => {
-        resetDropdown(tsAdsets, 'Chọn nhóm quảng cáo...');
-        resetDropdown(tsAds, 'Chọn quảng cáo...');
+    s2Campaigns.on('change', () => {
+        const selectedCampaigns = s2Campaigns.val() ? s2Campaigns.val().filter(id => id !== 'all') : [];
+        
+        resetDropdown(s2Adsets, 'Chọn nhóm quảng cáo...');
+        resetDropdown(s2Ads, 'Chọn quảng cáo...');
+        
         if (selectedCampaigns && selectedCampaigns.length > 0) {
             loadAdsetDropdown(selectedCampaigns);
-            tsAdsets.enable();
+            s2Adsets.prop('disabled', false).trigger('change');
         }
     });
 
-    tsAdsets.on('change', (selectedAdsets) => {
-        resetDropdown(tsAds, 'Chọn quảng cáo...');
+    s2Adsets.on('change', () => {
+        const selectedAdsets = s2Adsets.val() ? s2Adsets.val().filter(id => id !== 'all') : [];
+        
+        resetDropdown(s2Ads, 'Chọn quảng cáo...');
+        
         if (selectedAdsets && selectedAdsets.length > 0) {
             loadAdDropdown(selectedAdsets);
-            tsAds.enable();
+            s2Ads.prop('disabled', false).trigger('change');
         }
     });
 }
 
 // --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
 
-/**
- * Task 1: Xử lý nút "Làm mới"
- */
 async function handleRefreshData() {
     const button = document.getElementById('btn-refresh-data');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
 
     try {
-        const dateParams = getDateFilterParams(true); // Lấy ngày cho việc "Tải"
+        const dateParams = getDateFilterParams(true);
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
         
         const response = await fetch('/api/refresh', {
@@ -186,10 +169,7 @@ async function handleRefreshData() {
         const result = await response.json();
         showNotification(result.message || 'Làm mới dữ liệu thành công!', 'success');
         
-        // Tải lại các dropdown (vì dữ liệu Dimensions có thể đã thay đổi)
         triggerCampaignLoad();
-        
-        // Tự động "Áp dụng" bộ lọc
         handleApplyFilters(); 
 
     } catch (error) {
@@ -200,25 +180,19 @@ async function handleRefreshData() {
     }
 }
 
-/**
- * Task 3: Xử lý nút "Áp dụng"
- */
 async function handleApplyFilters() {
     const button = document.getElementById('btn-apply-filters');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
 
-    // 1. Lấy tất cả giá trị filter
     const filters = getFilterPayload();
     
     if (!filters) {
-        // Lỗi đã được hiển thị bởi getFilterPayload
         setButtonIdle(button, originalText);
         return;
     }
 
     try {
-        // 2. Gọi song song API
         const [overviewRes, chartRes] = await Promise.all([
             fetch('/api/overview_data', {
                 method: 'POST',
@@ -244,16 +218,13 @@ async function handleApplyFilters() {
         const overviewData = await overviewRes.json();
         const chartData = await chartRes.json();
 
-        // 3. Render dữ liệu
         renderOverviewData(overviewData.scorecards);
         renderChartData(chartData);
         
-        // (Tùy chọn: Tải bảng dữ liệu chi tiết, hiện chưa có API)
-        document.getElementById('campaign-table-body').innerHTML = `
-            <tr>
-                <td colspan="6" class="py-4 px-4 text-center text-gray-500">Đã tải xong dữ liệu tổng quan.</td>
-            </tr>
-        `;
+        const tableBody = document.getElementById('campaign-table-body');
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="py-4 px-4 text-center text-gray-500">Đã tải xong dữ liệu tổng quan.</td></tr>`;
+        }
 
     } catch (error) {
         console.error('Lỗi khi áp dụng bộ lọc:', error);
@@ -263,45 +234,43 @@ async function handleApplyFilters() {
     }
 }
 
-// --- CÁC HÀM TẢI DROPDOWN (ĐÃ CẬP NHẬT CHO TOM SELECT) ---
+// --- CÁC HÀM TẢI DROPDOWN (VIẾT LẠI CHO SELECT2) ---
 
 async function loadAccountDropdown() {
-    tsAccount.clear(true);
-    tsAccount.clearOptions();
-    tsAccount.disable();
-    tsAccount.control_input.placeholder = 'Đang tải tài khoản...';
+    s2Account.empty().append(new Option('Đang tải tài khoản...', '')).prop('disabled', true).trigger('change');
+    
     try {
-        // 1. Tải dữ liệu trực tiếp (KHÔNG dùng ts.load())
         const response = await fetch('/api/accounts');
         if (!response.ok) throw new Error('Lỗi mạng khi tải tài khoản');
         const accounts = await response.json();
         
-        // 2. Map dữ liệu (Code này của bạn đã đúng)
-        const options = accounts.map(c => ({ id: c.id, text: c.name }));
+        s2Account.empty(); // Xóa "Đang tải"
 
-        // 3. Thêm dữ liệu vào TomSelect
-        tsAccount.addOptions(options);
-        tsAccount.enable(); // Bật lại
-        tsAccount.control_input.placeholder = 'Đang tải tài khoản...';
+        // [QUAN TRỌNG] Thêm option rỗng cho placeholder
+        s2Account.append(new Option('', '', true, true));
+        
+        // Thêm option vào
+        accounts.forEach(c => {
+            const option = new Option(c.name, c.id);
+            s2Account.append(option);
+        });
 
-        // 4. Tự động chọn tài khoản đầu tiên và tải campaign
-        if (options.length > 0) {
-            // Đặt giá trị một cách "im lặng" (silent = true) để tránh kích hoạt sự kiện 'change'
-            // Chúng ta sẽ gọi triggerCampaignLoad() thủ công ngay sau đây.
-            tsAccount.setValue(options[0].id, true); 
-            
-            // Kích hoạt tải campaign thủ công sau khi đã chọn xong
-            triggerCampaignLoad();
+        s2Account.prop('disabled', false).trigger('change');
+
+        // Tự động chọn tài khoản đầu tiên
+        if (accounts.length > 0) {
+            s2Account.val(accounts[0].id).trigger('change'); // .trigger('change') sẽ tự động gọi triggerCampaignLoad
         }
     } catch (error) {
         console.error('Lỗi tải tài khoản:', error);
-        tsAccount.enable();
-        tsAccount.control_input.placeholder = 'Lỗi tải tài khoản...';
+        s2Account.empty().append(new Option('Lỗi tải tài khoản', '')).prop('disabled', true).trigger('change');
     }
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
-    resetDropdown(tsCampaigns, 'Đang tải chiến dịch...');
+    const placeholder = 'Chọn chiến dịch...';
+    resetDropdown(s2Campaigns, 'Đang tải chiến dịch...');
+    
     try {
         const response = await fetch('/api/campaigns', {
             method: 'POST',
@@ -310,22 +279,40 @@ async function loadCampaignDropdown(accountId, dateParams) {
         });
         if (!response.ok) throw new Error('Lỗi mạng');
         const campaigns = await response.json();
-        // Đổi key 'campaign_id' thành 'id' và 'name' thành 'text' cho Tom-Select
-        const options = campaigns.map(c => ({ id: c.campaign_id, text: c.name }));
-        // Thêm dữ liệu vào Tom Select
-        tsCampaigns.addOptions(options);
-        tsCampaigns.enable();
-        tsCampaigns.control_input.placeholder = 'Chọn chiến dịch...';
+
+        s2Campaigns.empty(); // Xóa "Đang tải"
+
+        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
+        s2Campaigns.append(new Option('', '', true, true));
+
+        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
+        if (campaigns.length > 0) {
+            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
+            allOption.id = 'campaigns-all'; // ID cho CSS
+            s2Campaigns.append(allOption);
+        }
+        
+        // Thêm các option còn lại
+        campaigns.forEach(c => {
+            const option = new Option(c.name, c.campaign_id);
+            s2Campaigns.append(option);
+        });
+        
+        s2Campaigns.prop('disabled', false).trigger('change');
+        // Đặt lại placeholder sau khi tải xong
+        s2Campaigns.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+
     } catch (error) {
         console.error('Lỗi tải chiến dịch:', error);
-        tsCampaigns.enable();
-        tsCampaigns.control_input.placeholder = 'Lỗi tải chiến dịch...';
+        resetDropdown(s2Campaigns, 'Lỗi tải chiến dịch...');
     }
 }
 
 
 async function loadAdsetDropdown(campaignIds) {
-    resetDropdown(tsAdsets, 'Đang tải nhóm QC...');
+    const placeholder = 'Chọn nhóm quảng cáo...';
+    resetDropdown(s2Adsets, 'Đang tải nhóm QC...');
+    
     try {
         const response = await fetch('/api/adsets', {
             method: 'POST',
@@ -334,19 +321,37 @@ async function loadAdsetDropdown(campaignIds) {
         });
         if (!response.ok) throw new Error('Lỗi mạng');
         const adsets = await response.json();
-        const options = adsets.map(a => ({ id: a.adset_id, text: a.name }));
-        tsAdsets.addOptions(options);
-        tsAdsets.enable();
-        tsAdsets.control_input.placeholder = 'Chọn nhóm quảng cáo...';
+        
+        s2Adsets.empty(); // Xóa "Đang tải"
+
+        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
+        s2Adsets.append(new Option('', '', true, true));
+
+        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
+        if (adsets.length > 0) {
+            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
+            allOption.id = 'adsets-all'; // ID cho CSS
+            s2Adsets.append(allOption);
+        }
+
+        adsets.forEach(a => {
+            const option = new Option(a.name, a.adset_id);
+            s2Adsets.append(option);
+        });
+        
+        s2Adsets.prop('disabled', false).trigger('change');
+        s2Adsets.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+        
     } catch (error) {
         console.error('Lỗi tải nhóm QC:', error);
-        tsAdsets.enable();
-        tsAdsets.control_input.placeholder = 'Lỗi tải nhóm QC...';
+        resetDropdown(s2Adsets, 'Lỗi tải nhóm QC...');
     }
 }
 
 async function loadAdDropdown(adsetIds) {
-    resetDropdown(tsAds, 'Đang tải quảng cáo...');
+    const placeholder = 'Chọn quảng cáo...';
+    resetDropdown(s2Ads, 'Đang tải quảng cáo...');
+    
     try {
         const response = await fetch('/api/ads', {
             method: 'POST',
@@ -355,119 +360,130 @@ async function loadAdDropdown(adsetIds) {
         });
         if (!response.ok) throw new Error('Lỗi mạng');
         const ads = await response.json();
-        const options = ads.map(ad => ({ id: ad.ad_id, text: ad.name }));
-        tsAds.addOptions(options);
-        tsAds.enable();
-        tsAds.control_input.placeholder = 'Chọn quảng cáo...';
+        
+        s2Ads.empty(); // Xóa "Đang tải"
+
+        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
+        s2Ads.append(new Option('', '', true, true));
+
+        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
+        if (ads.length > 0) {
+            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
+            allOption.id = 'ads-all'; // ID cho CSS
+            s2Ads.append(allOption);
+        }
+        
+        ads.forEach(ad => {
+            const option = new Option(ad.name, ad.ad_id);
+            s2Ads.append(option);
+        });
+
+        s2Ads.prop('disabled', false).trigger('change');
+        s2Ads.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+        
     } catch (error) {
         console.error('Lỗi tải quảng cáo:', error);
-        tsAds.enable();
-        tsAds.control_input.placeholder = 'Lỗi tải quảng cáo...';
+        resetDropdown(s2Ads, 'Lỗi tải quảng cáo...');
     }
 }
 
 
-// --- CÁC HÀM RENDER DỮ LIỆU ---
+// --- CÁC HÀM RENDER DỮ LIỆU (Giữ nguyên, không thay đổi) ---
 
-/**
- * Render dữ liệu vào các thẻ KPI và Bảng
- */
 function renderOverviewData(data) {
-    // Helper để định dạng số
     const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(Math.round(num || 0));
     const formatCurrency = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.round(num || 0));
     const formatPercent = (num) => `${parseFloat(num || 0).toFixed(2)}%`;
-
-    // Hàng 1: Thẻ KPI (Sử dụng ID từ file HTML của bạn)
     const kpiSpend = document.getElementById('kpi-total-spend');
     const kpiImpressions = document.getElementById('kpi-total-impressions');
     const kpiCtr = document.getElementById('kpi-avg-ctr');
     const kpiPurchases = document.getElementById('kpi-total-purchases');
-
     if (kpiSpend) kpiSpend.innerText = formatCurrency(data.total_spend);
     if (kpiImpressions) kpiImpressions.innerText = formatNumber(data.total_impressions);
     if (kpiCtr) kpiCtr.innerText = formatPercent(data.ctr);
     if (kpiPurchases) kpiPurchases.innerText = formatNumber(data.total_purchases);
-    
-    // Hàng 3, Cột 1: Phễu
-    document.getElementById('funnel-total-cost').innerText = formatCurrency(data.total_spend);
-    document.getElementById('funnel-impressions').innerText = formatNumber(data.total_impressions);
-    document.getElementById('funnel-post-engagement').innerText = formatNumber(data.total_post_engagement);
-    document.getElementById('funnel-clicks').innerText = formatNumber(data.total_clicks);
-    document.getElementById('funnel-messaging').innerText = formatNumber(data.total_messages);
-    
-    // Tính toán và điền KPI phụ của phễu
-    document.getElementById('funnel-cpm').innerText = `CPM: ${formatCurrency(data.avg_cpm)}`;
+    const elFunnelCost = document.getElementById('funnel-total-cost');
+    if (elFunnelCost) elFunnelCost.innerText = formatCurrency(data.total_spend);
+    const elFunnelImp = document.getElementById('funnel-impressions');
+    if (elFunnelImp) elFunnelImp.innerText = formatNumber(data.total_impressions);
+    const elFunnelEng = document.getElementById('funnel-post-engagement');
+    if (elFunnelEng) elFunnelEng.innerText = formatNumber(data.total_post_engagement);
+    const elFunnelClicks = document.getElementById('funnel-clicks');
+    if (elFunnelClicks) elFunnelClicks.innerText = formatNumber(data.total_clicks);
+    const elFunnelMsg = document.getElementById('funnel-messaging');
+    if (elFunnelMsg) elFunnelMsg.innerText = formatNumber(data.total_messages);
+    const elFunnelCpm = document.getElementById('funnel-cpm');
+    if (elFunnelCpm) elFunnelCpm.innerText = `CPM: ${formatCurrency(data.avg_cpm)}`;
     const cpe = data.total_post_engagement > 0 ? (data.total_spend / data.total_post_engagement) : 0;
-    document.getElementById('funnel-cpe').innerText = `Cost/Eng: ${formatCurrency(cpe)}`;
+    const elFunnelCpe = document.getElementById('funnel-cpe');
+    if (elFunnelCpe) elFunnelCpe.innerText = `Cost/Eng: ${formatCurrency(cpe)}`;
     const cpc = data.total_clicks > 0 ? (data.total_spend / data.total_clicks) : 0;
-    document.getElementById('funnel-cpc').innerText = `CPC: ${formatCurrency(cpc)}`;
+    const elFunnelCpc = document.getElementById('funnel-cpc');
+    if (elFunnelCpc) elFunnelCpc.innerText = `CPC: ${formatCurrency(cpc)}`;
     const cpmc = data.total_messages > 0 ? (data.total_spend / data.total_messages) : 0;
-    document.getElementById('funnel-cpmc').innerText = `Cost/Msg: ${formatCurrency(cpmc)}`;
-
-    // Hàng 3, Cột 2: Bảng KPI chi tiết
-    document.getElementById('kpi-detail-impressions').innerText = formatNumber(data.total_impressions);
-    document.getElementById('kpi-detail-reach').innerText = formatNumber(data.total_reach);
-    document.getElementById('kpi-detail-ctr').innerText = formatPercent(data.ctr);
-    document.getElementById('kpi-detail-post-engagement').innerText = formatNumber(data.total_post_engagement);
-    document.getElementById('kpi-detail-link-click').innerText = formatNumber(data.total_link_click);
-    document.getElementById('kpi-detail-messages').innerText = formatNumber(data.total_messages);
-    document.getElementById('kpi-detail-purchases').innerText = formatNumber(data.total_purchases);
-    document.getElementById('kpi-detail-purchase-value').innerText = formatCurrency(data.total_purchase_value);
-    
-    // Xóa các text (n/a)
-    document.querySelectorAll('p[id$="-growth"]').forEach(el => el.innerHTML = '');
+    const elFunnelCpmc = document.getElementById('funnel-cpmc');
+    if (elFunnelCpmc) elFunnelCpmc.innerText = `Cost/Msg: ${formatCurrency(cpmc)}`;
+    const elDetailImp = document.getElementById('kpi-detail-impressions');
+    if (elDetailImp) elDetailImp.innerText = formatNumber(data.total_impressions);
+    const elDetailReach = document.getElementById('kpi-detail-reach');
+    if (elDetailReach) elDetailReach.innerText = formatNumber(data.total_reach);
+    const elDetailCtr = document.getElementById('kpi-detail-ctr');
+    if (elDetailCtr) elDetailCtr.innerText = formatPercent(data.ctr);
+    const elDetailEng = document.getElementById('kpi-detail-post-engagement');
+    if (elDetailEng) elDetailEng.innerText = formatNumber(data.total_post_engagement);
+    const elDetailLinkClick = document.getElementById('kpi-detail-link-click');
+    if (elDetailLinkClick) elDetailLinkClick.innerText = formatNumber(data.total_link_click);
+    const elDetailMsg = document.getElementById('kpi-detail-messages');
+    if (elDetailMsg) elDetailMsg.innerText = formatNumber(data.total_messages);
+    const elDetailPurch = document.getElementById('kpi-detail-purchases');
+    if (elDetailPurch) elDetailPurch.innerText = formatNumber(data.total_purchases);
+    const elDetailPurchVal = document.getElementById('kpi-detail-purchase-value');
+    if (elDetailPurchVal) elDetailPurchVal.innerText = formatCurrency(data.total_purchase_value);
+    document.querySelectorAll('p[id$="-growth"]').forEach(el => {
+        if (el) el.innerHTML = '';
+    });
 }
 
-/**
- * Task 4: Render dữ liệu vào biểu đồ đường
- */
 function renderChartData(chartData) {
     if (spendTrendChartInstance) {
         spendTrendChartInstance.data.labels = chartData.labels;
         spendTrendChartInstance.data.datasets = chartData.datasets;
         spendTrendChartInstance.update();
     }
-    // (Code render biểu đồ tròn (platform) sẽ cần API riêng)
 }
 
 
 // --- CÁC HÀM TRỢ GIÚP (HELPERS) ---
 
-/**
- * Lấy payload bộ lọc cuối cùng để gửi cho API
- */
 function getFilterPayload() {
     const filters = {};
     
-    // 1. Lấy Account ID
-    filters.account_id = tsAccount.getValue();
+    filters.account_id = s2Account.val(); // Dùng .val()
     if (!filters.account_id) {
         showNotification('Vui lòng chọn một Tài khoản Quảng cáo.', 'error');
         return null;
     }
 
-    // 2. Lấy Ngày
     const dateParams = getDateFilterParams();
     if (dateParams === null) {
-        return null; // Lỗi (ví dụ: ngày tùy chỉnh không hợp lệ)
+        return null;
     }
     filters.date_preset = dateParams.date_preset;
     filters.start_date = dateParams.start_date;
     filters.end_date = dateParams.end_date;
 
-    // 3. Lấy IDs (Campaigns, Adsets, Ads)
-    const campaignIds = tsCampaigns.getValue();
+    // Lọc ra 'all' trước khi gửi API
+    const campaignIds = s2Campaigns.val() ? s2Campaigns.val().filter(id => id !== 'all') : [];
     if (campaignIds.length > 0) {
         filters.campaign_ids = campaignIds;
     }
     
-    const adsetIds = tsAdsets.getValue();
+    const adsetIds = s2Adsets.val() ? s2Adsets.val().filter(id => id !== 'all') : [];
     if (adsetIds.length > 0) {
         filters.adset_ids = adsetIds;
     }
     
-    const adIds = tsAds.getValue();
+    const adIds = s2Ads.val() ? s2Ads.val().filter(id => id !== 'all') : [];
     if (adIds.length > 0) {
         filters.ad_ids = adIds;
     }
@@ -475,102 +491,76 @@ function getFilterPayload() {
     return filters;
 }
 
-/**
- * Lấy ngày tháng dựa trên bộ lọc
- * @param {boolean} forRefresh - Nếu là 'true', dùng ngày hôm nay làm end_date.
- * @returns {object} - { date_preset, start_date, end_date }
- */
 function getDateFilterParams(forRefresh = false) {
+    // ... (Giữ nguyên, không thay đổi)
     const timeFilter = document.getElementById('filter-time');
-    let date_preset = timeFilter.value; // (VD: "last_30d")
+    let date_preset = timeFilter.value;
     let start_date = document.getElementById('date-from').value;
     let end_date = document.getElementById('date-to').value;
     const today = new Date().toISOString().split('T')[0];
-    
     if (forRefresh && date_preset !== 'custom') {
         end_date = today;
     }
-
     if (date_preset !== 'custom') {
         start_date = null; 
     } else {
         if (!start_date || !end_date) {
             showNotification('Tùy chỉnh: Vui lòng chọn Từ ngày và Đến ngày!', 'error');
-            return null; // Dừng lại
+            return null;
         }
-        date_preset = null; // Gửi ngày tùy chỉnh, không gửi preset
+        date_preset = null;
     }
-
     if (!end_date) {
         end_date = today;
     }
-    
-    // Logic của app.py sẽ xử lý (date_preset, start_date, end_date)
     if (date_preset) {
-        // Gửi end_date để app.py tính toán preset
         return { date_preset: date_preset, end_date: end_date };
     } else {
-        // Gửi ngày tùy chỉnh
         return { date_preset: null, start_date: start_date, end_date: end_date };
     }
 }
 
-/**
- * Helper để điền dữ liệu vào Tom Select
- */
-function populateDropdown(tomSelectInstance, data, placeholder, valueKey, nameKey, includeAllOption) {
-    tomSelectInstance.clearOptions();
-    
-    // Chuyển đổi {campaign_id: "1", name: "A"} -> {value: "1", text: "A"}
-    let options = data.map(item => ({
-        value: item[valueKey],
-        text: item[nameKey]
-    }));
-    
-    // Tom Select không dùng 'all'. Placeholder sẽ xử lý việc "Tất cả"
-    tomSelectInstance.control_input.placeholder = placeholder;
+function resetDropdown(select2Instance, placeholder) {
+    if (select2Instance) {
+        select2Instance.empty(); // Xóa tất cả <option>
 
-    tomSelectInstance.addOptions(options);
-    tomSelectInstance.refreshOptions(false);
-}
-
-/**
- * Helper để reset và vô hiệu hóa Tom Select
- */
-function resetDropdown(tomSelectInstance, placeholder) {
-    if (tomSelectInstance) {
-        tomSelectInstance.clear(true);
-        tomSelectInstance.clearOptions();
-        tomSelectInstance.control_input.placeholder = placeholder;
-        tomSelectInstance.disable();
+        // [QUAN TRỌNG] Thêm option rỗng cho placeholder/allowClear
+        select2Instance.append(new Option('', '', true, true));
+        
+        // Thêm một option "placeholder" tạm thời khi đang tải/reset
+        const tempOption = new Option(placeholder, '', true, true);
+        tempOption.disabled = true;
+        select2Instance.append(tempOption);
+        
+        select2Instance.prop('disabled', true).trigger('change');
+        
+        // Cập nhật placeholder cho Select2
+        select2Instance.select2({ 
+            placeholder: placeholder, 
+            closeOnSelect: false, 
+            allowClear: true 
+        });
     }
 }
 
-/**
- * Helper để hiển thị trạng thái loading cho nút
- */
 function setButtonLoading(button, loadingText) {
+    // ... (Giữ nguyên, không thay đổi)
     button.disabled = true;
     const span = button.querySelector('span');
     if (span) span.innerText = loadingText;
     button.classList.add('button-loading');
 }
 
-/**
- * Helper để trả lại trạng thái bình thường cho nút
- */
 function setButtonIdle(button, originalText) {
+    // ... (Giữ nguyên, không thay đổi)
     button.disabled = false;
     const span = button.querySelector('span');
     if (span) span.innerText = originalText;
     button.classList.remove('button-loading');
 }
 
-/**
- * Helper để hiển thị thông báo (tạm thời dùng alert)
- */
 function showNotification(message, type = 'info') {
-    // Tạm thời dùng alert, bạn có thể thay bằng thư viện "Toast"
+    // ... (Giữ nguyên, không thay đổi)
     if (type === 'error') {
         console.error(message);
         alert(`LỖI: ${message}`);
@@ -580,21 +570,120 @@ function showNotification(message, type = 'info') {
     }
 }
 
-/**
- * Kích hoạt việc tải lại dropdown Campaigns.
- * Đây là hàm trung gian để gom logic lấy account_id và dateParams.
- */
 function triggerCampaignLoad() {
-    const accountId = tsAccount.getValue();
+    const accountId = s2Account.val();
     const dateParams = getDateFilterParams();
     console.log("triggerCampaignLoad được gọi. Giá trị dateParams:", dateParams);
-    // Reset các dropdown con
-    resetDropdown(tsCampaigns, 'Chọn chiến dịch...');
-    resetDropdown(tsAdsets, 'Chọn nhóm quảng cáo...');
-    resetDropdown(tsAds, 'Chọn quảng cáo...');
+    
+    resetDropdown(s2Campaigns, 'Chọn chiến dịch...');
+    resetDropdown(s2Adsets, 'Chọn nhóm quảng cáo...');
+    resetDropdown(s2Ads, 'Chọn quảng cáo...');
 
     if (accountId && dateParams) {
         loadCampaignDropdown(accountId, dateParams);
-        tsCampaigns.enable();
     }
+}
+
+/**
+ * Thêm logic "Chọn tất cả" / "Bỏ chọn tất cả" cho một instance Select2.
+ * @param {jQuery} $select2Instance - Đối tượng jQuery của thẻ <select>
+ * @param {string} allId - ID duy nhất cho option "all" (e.g., 'campaigns-all')
+ */
+function setupSelectAll($select2Instance, allId) {
+    const ALL_ID = 'all';
+
+    // Dùng event 'select2:select' để bắt sự kiện ngay lập tức
+    $select2Instance.on('select2:select', function (e) {
+        if (e.params.data.id === ALL_ID) {
+            // Case 1: Người dùng vừa BẤM CHỌN "Tất cả"
+            // Lấy tất cả ID của <option> NGOẠI TRỪ 'all'
+            const allOptionValues = $select2Instance.find('option')
+                .map((i, el) => $(el).val())
+                .get();
+                
+            // Set giá trị bao gồm tất cả
+            $select2Instance.val(allOptionValues).trigger('change');
+        }
+    });
+
+    // Dùng event 'select2:unselect'
+    $select2Instance.on('select2:unselect', function (e) {
+        const currentValues = $select2Instance.val() || [];
+        
+        if (e.params.data.id === ALL_ID) {
+            // Case 2: Người dùng vừa BỎ CHỌN "Tất cả" (qua badge 'x')
+            $select2Instance.val(null).trigger('change');
+            
+        } else if (currentValues.includes(ALL_ID)) {
+            // Case 3: Đã chọn "Tất cả", nhưng người dùng bỏ 1 item khác
+            // -> Bỏ chọn "Tất cả" và giữ các item còn lại
+            const newValuesWithoutAll = currentValues.filter(id => id !== ALL_ID);
+            $select2Instance.val(newValuesWithoutAll).trigger('change');
+        }
+    });
+
+    // Bổ sung: Tự động check "Tất cả" nếu user chọn hết
+    $select2Instance.on('change', function(e) {
+        // Chỉ chạy logic này khi event không phải do trigger nội bộ
+        if (e.originalEvent) {
+             const currentValues = $select2Instance.val() || [];
+             const allOptionIds = $select2Instance.find('option').map((i, el) => $(el).val()).get();
+             const regularOptionIds = allOptionIds.filter(id => id !== ALL_ID);
+
+             if (!currentValues.includes(ALL_ID) && 
+                 currentValues.length === regularOptionIds.length && 
+                 regularOptionIds.length > 0) {
+                 
+                // Case 4: Người dùng tự tay chọn HẾT tất cả
+                // -> Tự động chọn thêm "Tất cả" cho họ
+                $select2Instance.val(allOptionIds).trigger('change.select2'); // trigger nội bộ
+             }
+        }
+    });
+    
+    // Thêm class CSS cho option "Tất cả"
+    // (Vì Select2 tạo lại DOM)
+    $select2Instance.on('select2:open', function() {
+        // Thêm class CSS cho option 'all'
+        // jQuery `find` không tìm thấy option 'all' vì nó nằm trong dropdown
+        // Phải tìm trong `results`
+        setTimeout(() => {
+             $('.select2-results__option[id="' + allId + '"]').addClass('select2-results__option--all');
+        }, 0);
+    });
+}
+
+/**
+ * [MỚI] Thêm một badge đếm số lượng vào bên phải ô Select2
+ * @param {jQuery} $select2Instance - Đối tượng jQuery của thẻ <select>
+ */
+function setupSelectionCounter($select2Instance) {
+    // Tìm container .select2-container (là anh em 'next' của thẻ <select>)
+    const $container = $select2Instance.next('.select2-container');
+    
+    // 1. Tạo element badge đếm số 1 lần duy nhất
+    const $counter = $('<span class="select2-selection-counter"></span>');
+    $container.append($counter); // Gắn vào container
+    $counter.hide(); // Ẩn đi lúc đầu
+
+    // 2. Tạo hàm helper để cập nhật
+    const updateCounter = () => {
+        const values = $select2Instance.val() || [];
+        
+        // [QUAN TRỌNG] Đếm số lượng, LỌC BỎ giá trị 'all'
+        const count = values.filter(id => id !== 'all').length; 
+
+        if (count > 0) {
+            $counter.text(count); // Cập nhật số
+            $counter.show();
+        } else {
+            $counter.hide();
+        }
+    };
+
+    // 3. Gắn hàm cập nhật vào sự kiện 'change'
+    $select2Instance.on('change', updateCounter);
+    
+    // 4. Chạy 1 lần lúc khởi tạo (để đảm bảo)
+    updateCounter();
 }
