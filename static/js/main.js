@@ -1,22 +1,33 @@
 /**
  * main.js
  * File JavaScript chính cho Meta Ads Dashboard
- * Đã chuyển đổi hoàn toàn sang jQuery + Select2.
+ * CẤU TRÚC KẾT HỢP:
+ * - Sử dụng Select2 cho single-select (Account, Time).
+ * - Sử dụng MultiselectDropdown.js cho multi-select (Campaigns, Adsets, Ads).
  */
 
-// --- BIẾN TOÀN CỤC (đã đổi tên s2 = Select2) ---
+// --- BIẾN TOÀN CỤC ---
 let spendTrendChartInstance = null;
 let platformChartInstance = null;
-let s2Account, s2Time, s2Campaigns, s2Adsets, s2Ads;
+
+// Biến cho Select2
+let s2Account, s2Time;
+
+// Biến cho các <select> DOM element (cho multi-select)
+let elCampaigns, elAdsets, elAds;
 
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Phải đợi DOM load xong mới chạy code jQuery
-    // nên toàn bộ code sẽ nằm trong này
     
+    // [QUAN TRỌNG]
+    // Khởi tạo UI của thư viện multiselect-dropdown TRƯỚC TIÊN
+    // để sửa lỗi race condition.
+    MultiselectDropdown(window.MultiselectDropdownOptions);
+
+    // Giờ mới chạy các hàm logic của dashboard
     feather.replace();
     initializeCharts();
-    initializeSelect2();
+    initializeSelects(); 
     setupEventListeners();
     loadAccountDropdown(); // Tải tài khoản ngay khi bắt đầu
 });
@@ -24,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- KHỞI TẠO GIAO DIỆN ---
 
 function initializeCharts() {
+    // (Giữ nguyên, không thay đổi)
     const ctxSpend = document.getElementById('spendTrendChart').getContext('2d');
     spendTrendChartInstance = new Chart(ctxSpend, {
         type: 'line',
@@ -31,11 +43,7 @@ function initializeCharts() {
         options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
-            elements: {
-                line: {
-                    fill: true // Bật tính năng "fill" (lấp đầy)
-                }
-            },
+            elements: { line: { fill: true } },
             scales: {
                 y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Chi tiêu (Spend)' } },
                 y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Hiển thị (Impressions)' }, grid: { drawOnChartArea: false } },
@@ -57,46 +65,40 @@ function initializeCharts() {
 }
 
 /**
- * Khởi tạo Select2 cho các dropdown
+ * Khởi tạo các dropdown
+ * - Select2 cho single-select
+ * - Lấy DOM element cho multi-select (thư viện đã tự khởi tạo UI)
  */
-function initializeSelect2() {
-    // Cài đặt chung
+function initializeSelects() {
+    // Cài đặt chung cho Select2
     const singleSelectSettings = (placeholder) => ({
         placeholder: placeholder,
+        width: '100%',
     });
 
-    const multiSelectSettings = (placeholder) => ({
-        placeholder: placeholder,
-        closeOnSelect: false, // Giữ dropdown mở khi chọn
-        maximumSelectionLength: 1 //
-    });
-
-    // 1. Dropdown Tài khoản (chọn một)
+    // 1. Dropdown Tài khoản (Dùng Select2)
     s2Account = $('#filter-ad-account').select2(singleSelectSettings('Chọn tài khoản...'));
 
-    // 2. Dropdown Thời gian (chọn một)
+    // 2. Dropdown Thời gian (Dùng Select2)
     s2Time = $('#filter-time').select2({
-        minimumResultsForSearch: Infinity // Ẩn ô tìm kiếm
+        minimumResultsForSearch: Infinity
     });
 
-    // 3. Dropdown Chiến dịch (chọn nhiều)
-    const campaignPlaceholder = 'Chọn chiến dịch...';
-    s2Campaigns = $('#filter-campaigns').select2(multiSelectSettings(campaignPlaceholder));
-    setupSelectAll(s2Campaigns, 'campaigns-all'); // Thêm logic "Chọn tất cả"
-
-    // Các dropdown con khác
-    const adsetPlaceholder = 'Chọn nhóm quảng cáo...';
-    s2Adsets = $('#filter-adsets').select2(multiSelectSettings(adsetPlaceholder));
-    setupSelectAll(s2Adsets, 'adsets-all');
-
-    const adPlaceholder = 'Chọn quảng cáo...';
-    s2Ads = $('#filter-ads').select2(multiSelectSettings(adPlaceholder));
-    setupSelectAll(s2Ads, 'ads-all');
+    // 3. Lấy DOM elements cho các multi-select
+    elCampaigns = document.getElementById('filter-campaigns');
+    elAdsets = document.getElementById('filter-adsets');
+    elAds = document.getElementById('filter-ads');
 
     // Vô hiệu hóa các dropdown con ban đầu
-    s2Campaigns.prop('disabled', true).trigger('change');
-    s2Adsets.prop('disabled', true).trigger('change');
-    s2Ads.prop('disabled', true).trigger('change');
+    elCampaigns.disabled = true;
+    elAdsets.disabled = true;
+    elAds.disabled = true;
+    
+    // Yêu cầu thư viện cập nhật UI theo trạng thái "disabled"
+    // Hàm .loadOptions() đã tồn tại vì MultiselectDropdown() đã chạy
+    elCampaigns.loadOptions(); //
+    elAdsets.loadOptions();
+    elAds.loadOptions();
 }
 
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
@@ -105,6 +107,7 @@ function setupEventListeners() {
     $('#btn-refresh-data').on('click', handleRefreshData);
     $('#btn-apply-filters').on('click', handleApplyFilters);
 
+    // Sự kiện cho Select2
     s2Time.on('change', (e) => {
         const value = $(e.currentTarget).val();
         const customDateRange = document.getElementById('custom-date-range');
@@ -120,34 +123,44 @@ function setupEventListeners() {
         triggerCampaignLoad();
     });
 
-    // Logic dropdown phụ thuộc (cascading)
-    s2Campaigns.on('change', () => {
-        const selectedCampaigns = s2Campaigns.val() ? s2Campaigns.val().filter(id => id !== 'all') : [];
+    // Sự kiện cho multi-select (dùng DOM addEventListener)
+    // Thư viện multiselect-dropdown sẽ tự kích hoạt sự kiện 'change'
+    // trên thẻ <select> thật khi người dùng click UI giả
+    
+    elCampaigns.addEventListener('change', () => {
+        const selectedCampaigns = Array.from(elCampaigns.selectedOptions).map(o => o.value);
         
-        resetDropdown(s2Adsets, 'Chọn nhóm quảng cáo...');
-        resetDropdown(s2Ads, 'Chọn quảng cáo...');
+        resetDropdown(elAdsets);
+        resetDropdown(elAds);
         
         if (selectedCampaigns && selectedCampaigns.length > 0) {
             loadAdsetDropdown(selectedCampaigns);
-            s2Adsets.prop('disabled', false).trigger('change');
+            elAdsets.disabled = false;
+            elAdsets.loadOptions(); // Cập nhật UI sau khi enabled
         }
     });
 
-    s2Adsets.on('change', () => {
-        const selectedAdsets = s2Adsets.val() ? s2Adsets.val().filter(id => id !== 'all') : [];
+    elAdsets.addEventListener('change', () => {
+        const selectedAdsets = Array.from(elAdsets.selectedOptions).map(o => o.value);
         
-        resetDropdown(s2Ads, 'Chọn quảng cáo...');
+        resetDropdown(elAds);
         
         if (selectedAdsets && selectedAdsets.length > 0) {
             loadAdDropdown(selectedAdsets);
-            s2Ads.prop('disabled', false).trigger('change');
+            elAds.disabled = false;
+            elAds.loadOptions(); // Cập nhật UI sau khi enabled
         }
+    });
+
+    elAds.addEventListener('change', () => {
+        // Không cần làm gì khi chọn Ads
     });
 }
 
 // --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
 
 async function handleRefreshData() {
+    // (Giữ nguyên, không thay đổi)
     const button = document.getElementById('btn-refresh-data');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
@@ -182,6 +195,7 @@ async function handleRefreshData() {
 }
 
 async function handleApplyFilters() {
+    // (Giữ nguyên, không thay đổi)
     const button = document.getElementById('btn-apply-filters');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
@@ -235,9 +249,10 @@ async function handleApplyFilters() {
     }
 }
 
-// --- CÁC HÀM TẢI DROPDOWN (VIẾT LẠI CHO SELECT2) ---
+// --- CÁC HÀM TẢI DROPDOWN ---
 
 async function loadAccountDropdown() {
+    // (Giữ nguyên) - Dùng Select2
     s2Account.empty().append(new Option('Đang tải tài khoản...', '')).prop('disabled', true).trigger('change');
     
     try {
@@ -245,30 +260,20 @@ async function loadAccountDropdown() {
         if (!response.ok) throw new Error('Lỗi mạng khi tải tài khoản');
         const accounts = await response.json();
         
-        s2Account.empty(); // Xóa "Đang tải"
-
-        // [QUAN TRỌNG] Thêm option rỗng cho placeholder
-        s2Account.append(new Option('', '', false, false));
+        s2Account.empty();
         
-        // Thêm option vào
         accounts.forEach(c => {
-            // Lấy 4 số cuối của ID
             const idString = String(c.id);
             const lastFourDigits = idString.slice(-4);
-            
-            // Tạo text mới, ví dụ: "BBI2025 (1234)"
             const newText = `${c.name} (${lastFourDigits})`;
-            
-            // Tạo option với text mới, nhưng value vẫn là ID đầy đủ
             const option = new Option(newText, c.id);
             s2Account.append(option);
         });
 
         s2Account.prop('disabled', false).trigger('change');
 
-        // Tự động chọn tài khoản đầu tiên
         if (accounts.length > 0) {
-            s2Account.val(accounts[0].id).trigger('change'); // .trigger('change') sẽ tự động gọi triggerCampaignLoad
+            s2Account.val(accounts[0].id).trigger('change');
         }
     } catch (error) {
         console.error('Lỗi tải tài khoản:', error);
@@ -277,8 +282,8 @@ async function loadAccountDropdown() {
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
-    const placeholder = 'Chọn chiến dịch...';
-    resetDropdown(s2Campaigns, 'Đang tải chiến dịch...');
+    // Dùng cho DOM element
+    setDropdownLoading(elCampaigns, 'Đang tải chiến dịch...');
     
     try {
         const response = await fetch('/api/campaigns', {
@@ -289,35 +294,28 @@ async function loadCampaignDropdown(accountId, dateParams) {
         if (!response.ok) throw new Error('Lỗi mạng');
         const campaigns = await response.json();
 
-        s2Campaigns.empty(); // Xóa "Đang tải"
-
-        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
-        if (campaigns.length > 0) {
-            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
-            allOption.id = 'campaigns-all'; // ID cho CSS
-            s2Campaigns.append(allOption);
-        }
-        
-        // Thêm các option còn lại
+        // 1. Cập nhật thẻ <select> THẬT (đang bị ẩn)
+        elCampaigns.innerHTML = '';
         campaigns.forEach(c => {
             const option = new Option(c.name, c.campaign_id);
-            s2Campaigns.append(option);
+            elCampaigns.appendChild(option);
         });
         
-        s2Campaigns.prop('disabled', false).trigger('change');
-        // Đặt lại placeholder sau khi tải xong
-        s2Campaigns.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+        elCampaigns.disabled = false;
+        
+        // 2. Ra lệnh cho thư viện "vẽ lại" UI GIẢ
+        elCampaigns.loadOptions();
 
     } catch (error) {
         console.error('Lỗi tải chiến dịch:', error);
-        resetDropdown(s2Campaigns, 'Lỗi tải chiến dịch...');
+        setDropdownLoading(elCampaigns, 'Lỗi tải chiến dịch...');
     }
 }
 
 
 async function loadAdsetDropdown(campaignIds) {
-    const placeholder = 'Chọn nhóm quảng cáo...';
-    resetDropdown(s2Adsets, 'Đang tải nhóm QC...');
+    // Dùng cho DOM element
+    setDropdownLoading(elAdsets, 'Đang tải nhóm QC...');
     
     try {
         const response = await fetch('/api/adsets', {
@@ -328,32 +326,27 @@ async function loadAdsetDropdown(campaignIds) {
         if (!response.ok) throw new Error('Lỗi mạng');
         const adsets = await response.json();
         
-        s2Adsets.empty(); // Xóa "Đang tải"
-
-        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
-        if (adsets.length > 0) {
-            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
-            allOption.id = 'adsets-all'; // ID cho CSS
-            s2Adsets.append(allOption);
-        }
-
+        // 1. Cập nhật thẻ <select> THẬT
+        elAdsets.innerHTML = '';
         adsets.forEach(a => {
             const option = new Option(a.name, a.adset_id);
-            s2Adsets.append(option);
+            elAdsets.appendChild(option);
         });
         
-        s2Adsets.prop('disabled', false).trigger('change');
-        s2Adsets.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+        elAdsets.disabled = false;
+        
+        // 2. Ra lệnh "vẽ lại" UI GIẢ
+        elAdsets.loadOptions();
         
     } catch (error) {
         console.error('Lỗi tải nhóm QC:', error);
-        resetDropdown(s2Adsets, 'Lỗi tải nhóm QC...');
+        setDropdownLoading(elAdsets, 'Lỗi tải nhóm QC...');
     }
 }
 
 async function loadAdDropdown(adsetIds) {
-    const placeholder = 'Chọn quảng cáo...';
-    resetDropdown(s2Ads, 'Đang tải quảng cáo...');
+    // Dùng cho DOM element
+    setDropdownLoading(elAds, 'Đang tải quảng cáo...');
     
     try {
         const response = await fetch('/api/ads', {
@@ -364,26 +357,21 @@ async function loadAdDropdown(adsetIds) {
         if (!response.ok) throw new Error('Lỗi mạng');
         const ads = await response.json();
         
-        s2Ads.empty(); // Xóa "Đang tải"
-
-        // THÊM: Thêm tùy chọn "Tất cả" LÊN ĐẦU
-        if (ads.length > 0) {
-            const allOption = new Option('TẤT CẢ (Chọn / Bỏ chọn)', 'all');
-            allOption.id = 'ads-all'; // ID cho CSS
-            s2Ads.append(allOption);
-        }
-        
+        // 1. Cập nhật thẻ <select> THẬT
+        elAds.innerHTML = '';
         ads.forEach(ad => {
             const option = new Option(ad.name, ad.ad_id);
-            s2Ads.append(option);
+            elAds.appendChild(option);
         });
 
-        s2Ads.prop('disabled', false).trigger('change');
-        s2Ads.select2({ placeholder: placeholder, closeOnSelect: false, allowClear: true });
+        elAds.disabled = false;
+        
+        // 2. Ra lệnh "vẽ lại" UI GIẢ
+        elAds.loadOptions();
         
     } catch (error) {
         console.error('Lỗi tải quảng cáo:', error);
-        resetDropdown(s2Ads, 'Lỗi tải quảng cáo...');
+        setDropdownLoading(elAds, 'Lỗi tải quảng cáo...');
     }
 }
 
@@ -445,6 +433,7 @@ function renderOverviewData(data) {
 }
 
 function renderChartData(chartData) {
+    // (Giữ nguyên, không thay đổi)
     if (spendTrendChartInstance) {
         spendTrendChartInstance.data.labels = chartData.labels;
         spendTrendChartInstance.data.datasets = chartData.datasets;
@@ -458,7 +447,8 @@ function renderChartData(chartData) {
 function getFilterPayload() {
     const filters = {};
     
-    filters.account_id = s2Account.val(); // Dùng .val()
+    // Lấy giá trị từ Select2
+    filters.account_id = s2Account.val();
     if (!filters.account_id) {
         showNotification('Vui lòng chọn một Tài khoản Quảng cáo.', 'error');
         return null;
@@ -472,18 +462,18 @@ function getFilterPayload() {
     filters.start_date = dateParams.start_date;
     filters.end_date = dateParams.end_date;
 
-    // Lọc ra 'all' trước khi gửi API
-    const campaignIds = s2Campaigns.val() ? s2Campaigns.val().filter(id => id !== 'all') : [];
+    // Lấy giá trị từ multi-select DOM
+    const campaignIds = Array.from(elCampaigns.selectedOptions).map(o => o.value);
     if (campaignIds.length > 0) {
         filters.campaign_ids = campaignIds;
     }
     
-    const adsetIds = s2Adsets.val() ? s2Adsets.val().filter(id => id !== 'all') : [];
+    const adsetIds = Array.from(elAdsets.selectedOptions).map(o => o.value);
     if (adsetIds.length > 0) {
         filters.adset_ids = adsetIds;
     }
     
-    const adIds = s2Ads.val() ? s2Ads.val().filter(id => id !== 'all') : [];
+    const adIds = Array.from(elAds.selectedOptions).map(o => o.value);
     if (adIds.length > 0) {
         filters.ad_ids = adIds;
     }
@@ -492,7 +482,7 @@ function getFilterPayload() {
 }
 
 function getDateFilterParams(forRefresh = false) {
-    // ... (Giữ nguyên, không thay đổi)
+    // (Giữ nguyên, không thay đổi)
     const timeFilter = document.getElementById('filter-time');
     let date_preset = timeFilter.value;
     let start_date = document.getElementById('date-from').value;
@@ -520,28 +510,60 @@ function getDateFilterParams(forRefresh = false) {
     }
 }
 
-function resetDropdown(select2Instance, placeholder) {
-    if (select2Instance) {
-        select2Instance.empty(); // Xóa tất cả <option>
+/**
+ * Reset một dropdown (xử lý cả Select2 và DOM Element)
+ * @param {object} instance - jQuery object (Select2) hoặc DOM Element
+ */
+function resetDropdown(instance) {
+    if (!instance) return;
+
+    if (instance.jquery) { //
+        // Đây là Select2 instance
+        instance.empty();
+        instance.prop('disabled', true).trigger('change');
+    } else {
+        // Đây là DOM element
+        instance.innerHTML = ''; //
+        instance.disabled = true; //
+        // Gọi loadOptions để cập nhật UI của thư viện mới
+        if (instance.loadOptions) {
+            instance.loadOptions();
+        }
+    }
+}
+
+/**
+ * Set trạng thái "Loading..." (xử lý cả Select2 và DOM Element)
+ * @param {object} instance - jQuery object (Select2) hoặc DOM Element
+ * @param {string} loadingText - Text hiển thị
+ */
+function setDropdownLoading(instance, loadingText) {
+    if (!instance) return;
+
+    if (instance.jquery) { //
+        // Đây là Select2 instance
+        instance.empty();
+        instance.next('.select2-container')
+                     .find('.select2-selection__placeholder')
+                     .text(loadingText);
+        instance.prop('disabled', true).trigger('change');
+    } else {
+        // Đây là DOM element
+        instance.innerHTML = '';
+        instance.disabled = true;
         
-        // Thêm một option "placeholder" tạm thời khi đang tải/reset
-        const tempOption = new Option(placeholder, 'loading', false, false);
-        tempOption.disabled = true;
-        select2Instance.append(tempOption);
-        
-        select2Instance.prop('disabled', true).trigger('change');
-        
-        // Cập nhật placeholder cho Select2
-        select2Instance.select2({ 
-            placeholder: placeholder, 
-            closeOnSelect: false, 
-            allowClear: true 
-        });
+        // Thư viện mới đọc placeholder từ thuộc tính
+        instance.setAttribute('placeholder', loadingText);
+
+        // Gọi loadOptions để cập nhật UI
+        if (instance.loadOptions) {
+            instance.loadOptions();
+        }
     }
 }
 
 function setButtonLoading(button, loadingText) {
-    // ... (Giữ nguyên, không thay đổi)
+    // (Giữ nguyên, không thay đổi)
     button.disabled = true;
     const span = button.querySelector('span');
     if (span) span.innerText = loadingText;
@@ -549,7 +571,7 @@ function setButtonLoading(button, loadingText) {
 }
 
 function setButtonIdle(button, originalText) {
-    // ... (Giữ nguyên, không thay đổi)
+    // (Giữ nguyên, không thay đổi)
     button.disabled = false;
     const span = button.querySelector('span');
     if (span) span.innerText = originalText;
@@ -557,7 +579,7 @@ function setButtonIdle(button, originalText) {
 }
 
 function showNotification(message, type = 'info') {
-    // ... (Giữ nguyên, không thay đổi)
+    // (Giữ nguyên, không thay đổi)
     if (type === 'error') {
         console.error(message);
         alert(`LỖI: ${message}`);
@@ -572,80 +594,15 @@ function triggerCampaignLoad() {
     const dateParams = getDateFilterParams();
     console.log("triggerCampaignLoad được gọi. Giá trị dateParams:", dateParams);
     
-    resetDropdown(s2Campaigns, 'Chọn chiến dịch...');
-    resetDropdown(s2Adsets, 'Chọn nhóm quảng cáo...');
-    resetDropdown(s2Ads, 'Chọn quảng cáo...');
+    // Reset các multi-select
+    resetDropdown(elCampaigns);
+    resetDropdown(elAdsets);
+    resetDropdown(elAds);
 
     if (accountId && dateParams) {
         loadCampaignDropdown(accountId, dateParams);
     }
 }
 
-/**
- * Thêm logic "Chọn tất cả" / "Bỏ chọn tất cả" cho một instance Select2.
- * @param {jQuery} $select2Instance - Đối tượng jQuery của thẻ <select>
- * @param {string} allId - ID duy nhất cho option "all" (e.g., 'campaigns-all')
- */
-function setupSelectAll($select2Instance, allId) {
-    const ALL_ID = 'all';
-
-    // Dùng event 'select2:select' để bắt sự kiện ngay lập tức
-    $select2Instance.on('select2:select', function (e) {
-        if (e.params.data.id === ALL_ID) {
-            // Case 1: Người dùng vừa BẤM CHỌN "Tất cả"
-            // Lấy tất cả ID của <option> NGOẠI TRỪ 'all'
-            const allOptionValues = $select2Instance.find('option')
-                .map((i, el) => $(el).val())
-                .get();
-                
-            // Set giá trị bao gồm tất cả
-            $select2Instance.val(allOptionValues).trigger('change');
-        }
-    });
-
-    // Dùng event 'select2:unselect'
-    $select2Instance.on('select2:unselect', function (e) {
-        const currentValues = $select2Instance.val() || [];
-        
-        if (e.params.data.id === ALL_ID) {
-            // Case 2: Người dùng vừa BỎ CHỌN "Tất cả" (qua badge 'x')
-            $select2Instance.val(null).trigger('change');
-            
-        } else if (currentValues.includes(ALL_ID)) {
-            // Case 3: Đã chọn "Tất cả", nhưng người dùng bỏ 1 item khác
-            // -> Bỏ chọn "Tất cả" và giữ các item còn lại
-            const newValuesWithoutAll = currentValues.filter(id => id !== ALL_ID);
-            $select2Instance.val(newValuesWithoutAll).trigger('change');
-        }
-    });
-
-    // Bổ sung: Tự động check "Tất cả" nếu user chọn hết
-    $select2Instance.on('change', function(e) {
-        // Chỉ chạy logic này khi event không phải do trigger nội bộ
-        if (e.originalEvent) {
-             const currentValues = $select2Instance.val() || [];
-             const allOptionIds = $select2Instance.find('option').map((i, el) => $(el).val()).get();
-             const regularOptionIds = allOptionIds.filter(id => id !== ALL_ID);
-
-             if (!currentValues.includes(ALL_ID) && 
-                 currentValues.length === regularOptionIds.length && 
-                 regularOptionIds.length > 0) {
-                 
-                // Case 4: Người dùng tự tay chọn HẾT tất cả
-                // -> Tự động chọn thêm "Tất cả" cho họ
-                $select2Instance.val(allOptionIds).trigger('change.select2'); // trigger nội bộ
-             }
-        }
-    });
-    
-    // Thêm class CSS cho option "Tất cả"
-    // (Vì Select2 tạo lại DOM)
-    $select2Instance.on('select2:open', function() {
-        // Thêm class CSS cho option 'all'
-        // jQuery `find` không tìm thấy option 'all' vì nó nằm trong dropdown
-        // Phải tìm trong `results`
-        setTimeout(() => {
-             $('.select2-results__option[id="' + allId + '"]').addClass('select2-results__option--all');
-        }, 0);
-    });
-}
+// [ĐÃ XÓA] Hàm updateSelect2Counter và setupSelectAll
+// vì thư viện multiselect-dropdown.js đã tự xử lý.

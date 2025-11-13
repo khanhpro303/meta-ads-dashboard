@@ -12,6 +12,9 @@
     /* Thêm padding để chừa chỗ cho badge đếm số + nút clear 'x' */
     padding-right: 60px !important;
 }
+.select2-selection--multiple .select2-search__field {
+    width: 100% !important;
+}
 .select2-results__option[id$="-all"] {
     font-weight: 600;
     color: #0056b3;
@@ -44,6 +47,7 @@
     background-color: #5897fb; /* Màu hover mặc định của Select2 */
     color: #fff; /* Màu chữ trắng khi hover */
 }
+
 @layer properties;
 @layer theme, base, components, utilities;
 @layer theme {
