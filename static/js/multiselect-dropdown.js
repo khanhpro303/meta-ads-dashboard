@@ -1,58 +1,90 @@
+/* * [ĐÃ CHỈNH SỬA] 
+ * Khối style này đã được tùy chỉnh lại để sử dụng các biến CSS 
+ * từ styles.css (Tailwind) của bạn cho đồng bộ.
+ */
 var style = document.createElement('style');
 style.setAttribute("id","multiselect_dropdown_styles");
 style.innerHTML = `
-.multiselect-dropdown{
-  display: inline-block;
-  padding: 2px 5px 0px 5px;
-  border-radius: 4px;
-  
-  border: solid 1px #ced4da;
-  background-color: white;
+.multiselect-dropdown {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm, 0.875rem);
+  min-height: 2.625rem; /* Căn chỉnh chiều cao với input */
   position: relative;
+
+  /* Áp dụng style input của Tailwind */
+  background-color: var(--color-white, #fff);
+  border: 1px solid var(--color-gray-300, #D1D5DB); /* */
+  border-radius: var(--radius-md, 0.375rem); /* */
+  
+  /* Áp dụng shadow-sm của Tailwind */
+  --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+
+  /* Mũi tên (giữ nguyên) */
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right .75rem center;
   background-size: 16px 12px;
 }
 .multiselect-dropdown span.optext, .multiselect-dropdown span.placeholder{
-  margin-right:0.5em; 
-  margin-bottom:2px;
-  padding:1px 0; 
-  border-radius: 4px; 
+  margin-right:0.25rem; 
+  margin-bottom:0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-md, 0.375rem); /* */
   display:inline-block;
+  font-size: var(--text-sm, 0.875rem);
 }
 .multiselect-dropdown span.optext{
-  background-color:lightgray;
-  padding:1px 0.75em; 
+  /* Style "pill" của Tailwind (gray-200) */
+  background-color: var(--color-gray-200, #E5E7EB); /* */
+  color: var(--color-gray-800, #1F2937); /* */
 }
 .multiselect-dropdown span.optext .optdel {
   float: right;
-  margin: 0 -6px 1px 5px;
-  font-size: 0.7em;
+  margin: 0 -4px 1px 5px;
+  font-size: 0.8em;
   margin-top: 2px;
   cursor: pointer;
-  color: #666;
+  color: var(--color-gray-600, #4B5563); /* */
 }
 .multiselect-dropdown span.optext .optdel:hover { color: #c66;}
 .multiselect-dropdown span.placeholder{
-  color:#ced4da;
+  color: var(--color-gray-500, #6B7280); /* */
 }
 .multiselect-dropdown-list-wrapper{
-  box-shadow: gray 0 3px 8px;
+  /* Style shadow-md của Tailwind */
+  --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  
   z-index: 100;
-  padding:2px;
-  border-radius: 4px;
-  border: solid 1px #ced4da;
+  padding: 0.5rem; /* p-2 */
+  border-radius: var(--radius-md, 0.375rem); /* */
+  border: 1px solid var(--color-gray-300, #D1D5DB); /* */
   display: none;
-  margin: -1px;
+  margin: 0.25rem 0 0 0; /* mt-1 */
   position: absolute;
-  top:0;
+  top: 100%;
   left: 0;
   right: 0;
   background: white;
 }
 .multiselect-dropdown-list-wrapper .multiselect-dropdown-search{
-  margin-bottom:5px;
+  margin-bottom: 0.5rem; /* mb-2 */
+  /* Áp dụng style input của Tailwind */
+  width: 100%;
+  display: block;
+  padding: 0.5rem 0.75rem; /* p-2 px-3 */
+  font-size: var(--text-sm, 0.875rem); /* */
+  border: 1px solid var(--color-gray-300, #D1D5DB); /* */
+  border-radius: var(--radius-md, 0.375rem); /* */
+  box-sizing: border-box; /* Fix lỗi padding */
+}
+.multiselect-dropdown-list-wrapper .multiselect-dropdown-search:focus {
+    border-color: var(--color-blue-500, #3B82F6); /* */
+    box-shadow: 0 0 0 1px var(--color-blue-500, #3B82F6); 
+    outline: none;
 }
 .multiselect-dropdown-list{
   padding:2px;
@@ -70,6 +102,7 @@ style.innerHTML = `
 
 .multiselect-dropdown-list div{
   padding: 5px;
+  border-radius: 4px; /* bo góc nhẹ cho item */
 }
 .multiselect-dropdown-list input{
   height: 1.15em;
@@ -77,14 +110,24 @@ style.innerHTML = `
   margin-right: 0.35em;  
 }
 .multiselect-dropdown-list div.checked{
+  /* Có thể thêm style (vd: bg-blue-50) nếu muốn */
 }
 .multiselect-dropdown-list div:hover{
-  background-color: #ced4da;
+  /* Style hover của Tailwind (gray-100) */
+  background-color: var(--color-gray-100, #F3F4F6); /* */
 }
 .multiselect-dropdown span.maxselected {width:100%;}
-.multiselect-dropdown-all-selector {border-bottom:solid 1px #999;}
+.multiselect-dropdown-all-selector {
+  border-bottom: 1px solid var(--color-gray-300, #D1D5DB); /* */
+  font-weight: 600;
+}
 `;
 document.head.appendChild(style);
+
+/* * ========================================================================
+ * PHẦN LOGIC GỐC CỦA THƯ VIỆN (KHÔNG THAY ĐỔI)
+ * ========================================================================
+ */
 
 function MultiselectDropdown(options){
   var config={
@@ -115,7 +158,7 @@ function MultiselectDropdown(options){
   
   document.querySelectorAll("select[multiple]").forEach((el,k)=>{
     
-    var div=newEl('div',{class:'multiselect-dropdown',style:{width:config.style?.width??el.clientWidth+'px',padding:config.style?.padding??''}});
+    var div=newEl('div',{class:'multiselect-dropdown',style:{width:'100%',padding:config.style?.padding??''}});
     el.style.display='none';
     el.parentNode.insertBefore(div,el.nextSibling);
     var listWrap=newEl('div',{class:'multiselect-dropdown-list-wrapper'});
