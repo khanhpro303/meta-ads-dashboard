@@ -150,7 +150,7 @@ class FactPerformance(Base):
     placement_id = Column(Integer, ForeignKey('dim_placement.placement_id'))
     gender = Column(String)
     age = Column(String)
-    city = Column(String)
+    region = Column(String)
     
     spend = Column(Float, default=0.0)
     impressions = Column(BigInteger, default=0)
@@ -166,7 +166,7 @@ class FactPerformance(Base):
     post_engagement = Column(Integer, default=0)
     link_click = Column(Integer, default=0)
     
-    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', 'gender', 'age', 'city', name='_ad_performance_uc'),)
+    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', 'gender', 'age', 'region', name='_ad_performance_uc'),)
 
 # --- CLASS QUẢN LÝ DATABASE ---
 
@@ -704,7 +704,7 @@ class DatabaseManager:
                     'placement_id': placement_map.get(record.get('platform_position')),
                     'gender': record.get('gender', 'Unknown'),
                     'age': record.get('age', 'Unknown'),
-                    'city': record.get('city', 'Unknown'),
+                    'region': record.get('region', 'Unknown'),
                     'spend': float(record.get('spend', 0.0)),
                     'impressions': int(record.get('impressions', 0)),
                     'clicks': int(record.get('clicks', 0)),
@@ -792,15 +792,22 @@ class DatabaseManager:
                     # bằng account_id ('act_1465010674743789')
                         c['account_id'] = account_id
                     all_campaigns.extend(campaigns)
-                    campaign_ids = [c['campaign_id'] for c in campaigns]
+                    campaign_ids = [c['id'] for c in campaigns]
 
                     adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_id=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                     if adsets:
+                        for a in adsets:
+                            # Ghi đè campaign_id và account_id
+                            a['account_id'] = account_id
+
                         all_adsets.extend(adsets)
-                        adset_ids = [a['adset_id'] for a in adsets]
+                        adset_ids = [a['id'] for a in adsets]
 
                         ads = extractor.get_ads_for_adsets(account_id=account_id, adset_id=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                         if ads:
+                            for ad in ads:
+                                # Ghi đè campaign_id, adset_id và account_id
+                                ad['account_id'] = account_id
                             all_ads.extend(ads)
 
             # Upsert hàng loạt vào các bảng Dimension

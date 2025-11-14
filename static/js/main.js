@@ -39,7 +39,7 @@ function initializeCharts() {
         options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
-            elements: { line: { fill: true } },
+            elements: { line: { fill: true, tension: 0.4 } },
             scales: {
                 y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Chi tiêu (Spend)' } },
                 y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Hiển thị (Impressions)' }, grid: { drawOnChartArea: false } },
@@ -217,8 +217,8 @@ async function handleApplyFilters() {
     const filters = pieChartFilters;
 
     try {
-        // [THAY ĐỔI] Chúng ta gọi cả 3 API cùng lúc
-        const [overviewRes, chartRes, pieChartRes] = await Promise.all([
+        // [THAY ĐỔI] Thêm API thứ 4 cho table_data
+        const [overviewRes, chartRes, pieChartRes, tableRes] = await Promise.all([
             // 1. Overview
             fetch('/api/overview_data', {
                 method: 'POST',
@@ -236,6 +236,12 @@ async function handleApplyFilters() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(pieChartFilters) // Dùng payload riêng của pie
+            }),
+            // 4. [MỚI] Table Data
+            fetch('/api/table_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters) // Dùng filters chung
             })
         ]);
 
@@ -252,11 +258,16 @@ async function handleApplyFilters() {
             const err = await pieChartRes.json();
             throw new Error(`Lỗi pie chart: ${err.error}`);
         }
+        if (!tableRes.ok) { // [MỚI]
+            const err = await tableRes.json();
+            throw new Error(`Lỗi table data: ${err.error}`);
+        }
 
         // Lấy JSON
         const overviewData = await overviewRes.json();
         const chartData = await chartRes.json();
         const pieChartData = await pieChartRes.json(); // [MỚI]
+        const tableData = await tableRes.json(); // [MỚI]
 
         // Render dữ liệu
         renderOverviewData(overviewData.scorecards);
@@ -266,7 +277,7 @@ async function handleApplyFilters() {
         const metricText = elChartMetric.options[elChartMetric.selectedIndex].text;
         const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
         renderPieChartData(pieChartData, `${metricText} theo ${dimText}`);
-
+        renderTableData(tableData);
         
         const tableBody = document.getElementById('campaign-table-body');
         if (tableBody) {
@@ -276,6 +287,7 @@ async function handleApplyFilters() {
     } catch (error) {
         console.error('Lỗi khi áp dụng bộ lọc:', error);
         showNotification(`Lỗi khi lấy dữ liệu: ${error.message}`, 'error');
+        renderTableData(null, error.message);
     } finally {
         setButtonIdle(button, originalText);
     }
@@ -721,4 +733,72 @@ function triggerCampaignLoad() {
     if (accountId && dateParams) {
         loadCampaignDropdown(accountId, dateParams);
     }
+}
+
+/**
+ * [MỚI] Hàm helper để tạo badge cho trạng thái chiến dịch
+ * @param {string} status - Trạng thái (ví dụ: 'ACTIVE', 'PAUSED')
+ */
+function getStatusBadge(status) {
+    status = status ? status.toUpperCase() : 'UNKNOWN';
+    
+    switch (status) {
+        case 'ACTIVE':
+            return `<span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Hoạt động</span>`;
+        case 'PAUSED':
+            return `<span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Tạm dừng</span>`;
+        case 'ARCHIVED':
+            return `<span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Đã lưu trữ</span>`;
+        case 'DELETED':
+            return `<span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Đã xóa</span>`;
+        default:
+            return `<span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">${status}</span>`;
+    }
+}
+
+/**
+ * [MỚI] Hàm render dữ liệu cho bảng hiệu suất chiến dịch
+ * @param {Array} data - Dữ liệu từ API (/api/table_data)
+ * @param {string} errorMsg - Thông báo lỗi (tùy chọn)
+ */
+function renderTableData(data, errorMsg = null) {
+    const tableBody = document.getElementById('campaign-table-body');
+    if (!tableBody) return;
+
+    // Các hàm định dạng (local scope)
+    const formatCurrency = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.round(num || 0));
+    const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(Math.round(num || 0));
+
+    // Trường hợp 1: Có lỗi
+    if (errorMsg) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="py-4 px-4 text-center text-red-500">${errorMsg}</td></tr>`;
+        return;
+    }
+    
+    // Trường hợp 2: Không có dữ liệu
+    if (!data || data.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="py-4 px-4 text-center text-gray-500">Không tìm thấy dữ liệu chiến dịch phù hợp.</td></tr>`;
+        return;
+    }
+
+    // Trường hợp 3: Render dữ liệu
+    let html = '';
+    data.forEach(row => {
+        html += `<tr class="border-b hover:bg-gray-50">`;
+        // Tên chiến dịch
+        html += `<td class="py-3 px-4 font-medium text-gray-900">${row.campaign_name}</td>`;
+        // Trạng thái (dùng helper)
+        html += `<td class="py-3 px-4">${getStatusBadge(row.status)}</td>`;
+        // Chi tiêu (căn phải)
+        html += `<td class="py-3 px-4 text-right">${formatCurrency(row.spend)}</td>`;
+        // Hiển thị (căn phải)
+        html += `<td class="py-3 px-4 text-right">${formatNumber(row.impressions)}</td>`;
+        // Chuyển đổi (căn phải)
+        html += `<td class="py-3 px-4 text-right">${formatNumber(row.purchases)}</td>`;
+        // CPA (căn phải)
+        html += `<td class="py-3 px-4 text-right">${formatCurrency(row.cpa)}</td>`;
+        html += `</tr>`;
+    });
+
+    tableBody.innerHTML = html;
 }

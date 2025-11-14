@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 from matplotlib.dates import relativedelta
-from sqlalchemy import func, select, and_
+from sqlalchemy import func, select, and_, case
 
 # Import các lớp từ database_manager
 from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformance, DimDate, DimPlatform, DimPlacement
@@ -638,7 +638,106 @@ def get_breakdown_chart_data():
     finally:
         session.close()
 
+@app.route('/api/table_data', methods=['POST'])
+def get_table_data():
+    """
+    Lấy dữ liệu hiệu suất đã được nhóm theo chiến dịch để hiển thị trong bảng.
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. Lấy Account ID (Bắt buộc) ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
 
+        # === 2. Xử lý bộ lọc ngày (Giống các hàm khác) ===
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
+
+        # === 3. Xây dựng Metric tính toán (CPA) ===
+        # Sử dụng CASE để tránh lỗi chia cho 0
+        cpa_case = case(
+            (func.sum(FactPerformance.purchases) == 0, 0),
+            else_=(func.sum(FactPerformance.spend) / func.sum(FactPerformance.purchases))
+        ).label('cpa')
+
+        # === 4. Xây dựng câu truy vấn động ===
+        query = select(
+            DimCampaign.name.label('campaign_name'),
+            DimCampaign.status,
+            func.sum(FactPerformance.spend).label('total_spend'),
+            func.sum(FactPerformance.impressions).label('total_impressions'),
+            func.sum(FactPerformance.purchases).label('total_purchases'),
+            cpa_case
+        ).join(
+            DimCampaign, FactPerformance.campaign_id == DimCampaign.campaign_id
+        ).join(
+            DimDate, FactPerformance.date_key == DimDate.date_key
+        )
+
+        # === 5. Áp dụng bộ lọc ===
+        
+        # Lọc theo ngày (Luôn có)
+        query = query.filter(DimDate.full_date.between(start_date, end_date))
+        
+        # Lọc theo Account (Luôn có)
+        query = query.filter(DimCampaign.ad_account_id == account_id)
+
+        # Lọc theo cấp bậc (Campaign, Adset, Ad) - (Tùy chọn)
+        filters = []
+        if data.get('campaign_ids'):
+            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+        if data.get('adset_ids'):
+            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+        if data.get('ad_ids'):
+            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+        
+        if filters:
+            query = query.where(and_(*filters))
+
+        # === 6. Nhóm và Sắp xếp ===
+        query = query.group_by(
+            DimCampaign.campaign_id, # Group by ID để đảm bảo tính duy nhất
+            DimCampaign.name,
+            DimCampaign.status
+        ).order_by(
+            func.sum(FactPerformance.purchases).desc(),  # Sắp xếp theo lượt mua giảm dần
+            func.sum(FactPerformance.spend).asc()       # Sau đó tới chi tiêu tăng dần
+        )
+
+        # === 7. Thực thi và Định dạng kết quả ===
+        results = session.execute(query).all()
+        
+        table_data = []
+        for row in results:
+            table_data.append({
+                'campaign_name': row.campaign_name,
+                'status': row.status,
+                'spend': row.total_spend or 0,
+                'impressions': row.total_impressions or 0,
+                'purchases': row.total_purchases or 0,
+                'cpa': row.cpa or 0
+            })
+            
+        return jsonify(table_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu bảng: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
 
 if __name__ == '__main__':
     app.run(debug=True)
