@@ -65,8 +65,8 @@ class DimCampaign(Base):
     objective = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
-    date_start = Column(DateTime)
-    date_stop = Column(DateTime)
+    start_time = Column(DateTime)
+    stop_time = Column(DateTime)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension AdAccount
     ad_account_id = Column(String, ForeignKey('dim_ad_account.ad_account_id'))
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -81,11 +81,13 @@ class DimAdset(Base):
     name = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
-    date_start = Column(DateTime)
-    date_stop = Column(DateTime)
+    start_time = Column(DateTime)
+    end_time = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Campaign
     campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
+    # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension AdAccount thông qua Campaign
+    ad_account_id = Column(String, ForeignKey('dim_ad_account.ad_account_id'))
 
 class DimAd(Base):
     """
@@ -97,12 +99,14 @@ class DimAd(Base):
     name = Column(String)
     status = Column(String)
     created_time = Column(DateTime)
-    date_start = Column(DateTime)
-    date_stop = Column(DateTime)
+    ad_schedule_start_time = Column(DateTime)
+    ad_schedule_end_time = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension Adset và Campaign
     campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'))
     adset_id = Column(String, ForeignKey('dim_adset.adset_id'))
+    # Thêm Foreign Key (Khóa ngoại) liên kết đến Bảng Dimension AdAccount thông qua Campaign
+    ad_account_id = Column(String, ForeignKey('dim_ad_account.ad_account_id'))
 
 class DimPlatform(Base):
     """Bảng Dimension: Nền tảng (Facebook, Instagram, etc.)."""
@@ -138,14 +142,15 @@ class FactPerformance(Base):
     
     # Khóa chính tự tăng
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    
     date_key = Column(Integer, ForeignKey('dim_date.date_key'), nullable=False)
-    
     campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'), nullable=False)
     adset_id = Column(String, ForeignKey('dim_adset.adset_id'), nullable=False)
     ad_id = Column(String, ForeignKey('dim_ad.ad_id'), nullable=False)
     platform_id = Column(Integer, ForeignKey('dim_platform.platform_id'))
     placement_id = Column(Integer, ForeignKey('dim_placement.placement_id'))
+    gender = Column(String)
+    age = Column(String)
+    city = Column(String)
     
     spend = Column(Float, default=0.0)
     impressions = Column(BigInteger, default=0)
@@ -161,7 +166,7 @@ class FactPerformance(Base):
     post_engagement = Column(Integer, default=0)
     link_click = Column(Integer, default=0)
     
-    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', name='_ad_performance_uc'),)
+    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', 'gender', 'age', 'city', name='_ad_performance_uc'),)
 
 # --- CLASS QUẢN LÝ DATABASE ---
 
@@ -270,12 +275,12 @@ class DatabaseManager:
         prepared_data = []
         for camp in campaigns_data:
             prepared_data.append({
-                'campaign_id': camp['campaign_id'],
-                'name': camp.get('campaign_name'),
+                'campaign_id': camp['id'],
+                'name': camp.get('name'),
                 'objective': camp.get('objective'),
                 'created_time': parse_datetime_flexible(camp.get('created_time')),
-                'date_start': parse_datetime_flexible(camp.get('date_start')),
-                'date_stop': parse_datetime_flexible(camp.get('date_stop')),
+                'start_time': parse_datetime_flexible(camp.get('start_time')),
+                'stop_time': parse_datetime_flexible(camp.get('stop_time')),
                 'ad_account_id': camp['account_id']
             })
 
@@ -286,7 +291,8 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'objective': stmt.excluded.objective,
                 'created_time': stmt.excluded.created_time,
-                'date_stop': stmt.excluded.date_stop,
+                'start_time': stmt.excluded.start_time,
+                'stop_time': stmt.excluded.stop_time,
                 'ad_account_id': stmt.excluded.ad_account_id,
                 'updated_at': datetime.now()
             }
@@ -405,14 +411,15 @@ class DatabaseManager:
         prepared_data = []
         for adset in adsets_data:
             prepared_data.append({
-                'adset_id': adset['adset_id'],
-                'name': adset.get('adset_name'),
+                'adset_id': adset['id'],
+                'name': adset.get('name'),
                 'status': adset.get('status'),
                 'created_time': parse_datetime_flexible(adset.get('created_time')),
-                'date_start': parse_datetime_flexible(adset.get('date_start')),
-                'date_stop': parse_datetime_flexible(adset.get('date_stop')),
+                'start_time': parse_datetime_flexible(adset.get('start_time')),
+                'end_time': parse_datetime_flexible(adset.get('end_time')),
                 # === BỔ SUNG KHÓA NGOẠI ===
-                'campaign_id': adset.get('campaign_id')
+                'campaign_id': adset.get('campaign_id'),
+                'ad_account_id': adset.get('account_id')
             })
 
         stmt = pg_insert(DimAdset).values(prepared_data)
@@ -422,7 +429,8 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
-                'date_stop': stmt.excluded.date_stop,
+                'start_time': stmt.excluded.start_time,
+                'end_time': stmt.excluded.end_time,
                 # === BỔ SUNG CẬP NHẬT KHÓA NGOẠI ===
                 'campaign_id': stmt.excluded.campaign_id,
                 'updated_at': datetime.now()
@@ -503,15 +511,16 @@ class DatabaseManager:
         prepared_data = []
         for ad in ads_data:
             prepared_data.append({
-                'ad_id': ad['ad_id'],
-                'name': ad.get('ad_name'),
+                'ad_id': ad['id'],
+                'name': ad.get('name'),
                 'status': ad.get('status'),
                 'created_time': parse_datetime_flexible(ad.get('created_time')),
-                'date_start': parse_datetime_flexible(ad.get('date_start')),
-                'date_stop': parse_datetime_flexible(ad.get('date_stop')),
+                'ad_schedule_start_time': parse_datetime_flexible(ad.get('ad_schedule_start_time')),
+                'ad_schedule_end_time': parse_datetime_flexible(ad.get('ad_schedule_end_time')),
                 # === BỔ SUNG CÁC KHÓA NGOẠI ===
                 'adset_id': ad.get('adset_id'),
-                'campaign_id': ad.get('campaign_id')
+                'campaign_id': ad.get('campaign_id'),
+                'ad_account_id': ad.get('account_id')
             })
 
         stmt = pg_insert(DimAd).values(prepared_data)
@@ -521,10 +530,12 @@ class DatabaseManager:
                 'name': stmt.excluded.name,
                 'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
-                'date_stop': stmt.excluded.date_stop,
+                'ad_schedule_start_time': stmt.excluded.ad_schedule_start_time,
+                'ad_schedule_end_time': stmt.excluded.ad_schedule_end_time,
                 # === BỔ SUNG CẬP NHẬT CÁC KHÓA NGOẠI ===
                 'adset_id': stmt.excluded.adset_id,
                 'campaign_id': stmt.excluded.campaign_id,
+                'ad_account_id': stmt.excluded.ad_account_id,
                 'updated_at': datetime.now()
             }
         )
@@ -691,6 +702,9 @@ class DatabaseManager:
                     'ad_id': record['ad_id'],
                     'platform_id': platform_map.get(record.get('publisher_platform')),
                     'placement_id': placement_map.get(record.get('platform_position')),
+                    'gender': record.get('gender', 'Unknown'),
+                    'age': record.get('age', 'Unknown'),
+                    'city': record.get('city', 'Unknown'),
                     'spend': float(record.get('spend', 0.0)),
                     'impressions': int(record.get('impressions', 0)),
                     'clicks': int(record.get('clicks', 0)),

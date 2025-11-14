@@ -186,27 +186,25 @@ class FacebookAdsExtractor:
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
         campaigns = []
-        url = f"{self.base_url}/{account_id}/insights"
+        url = f"{self.base_url}/{account_id}/campaigns"
 
         if date_preset and date_preset in DATE_PRESET:
             params = {
                 'access_token': self.access_token,
-                'fields': 'account_id,campaign_id,campaign_name,created_time,objective,date_start,date_stop',
+                'fields': 'account_id,id,name,created_time,objective,start_time,stop_time',
                 'limit': 100,
                 'date_preset': date_preset,
-                'level': 'campaign'
             }
             logger.info(f"Lấy chiến dịch cho tài khoản {account_id} với khoảng '{date_preset}'...")
         else:
             params = {
                 'access_token': self.access_token,
-                'fields': 'campaign_id,campaign_name,created_time,objective,account_id,date_start,date_stop',
+                'fields': 'account_id,id,name,created_time,objective,start_time,stop_time',
                 'limit': 100,
                 'time_range': json.dumps({
                     'since': start_date,
                     'until': end_date
-                }),
-                'level': 'campaign'
+                })
             }
             logger.info(f"Lấy chiến dịch cho tài khoản {account_id} từ {start_date} đến {end_date}...")
         
@@ -248,7 +246,7 @@ class FacebookAdsExtractor:
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
         adsets = []
-        url = f"{self.base_url}/{account_id}/insights"
+        url = f"{self.base_url}/{account_id}/adsets"
 
         filtering_structure = [
             {
@@ -262,9 +260,8 @@ class FacebookAdsExtractor:
         filtering_json_string = json.dumps(filtering_structure)
         if date_preset and date_preset in DATE_PRESET:
             params = {
-                'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,adset_name,created_time,date_start,date_stop',
+                'fields': 'account_id,campaign_id,id,name,created_time,start_time,end_time',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -272,9 +269,8 @@ class FacebookAdsExtractor:
             logger.info(f"Lấy nhóm quảng cáo cho chiến dịch của tài khoản {account_id} và của tổng {len(campaign_id)} chiến dịch trong khoảng '{date_preset}'...")
         elif start_date and end_date:
             params = {
-                'level': 'adset',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,adset_name,created_time,date_start,date_stop',
+                'fields': 'account_id,campaign_id,id,name,created_time,start_time,end_time',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({
@@ -325,7 +321,7 @@ class FacebookAdsExtractor:
         Nếu có date_preset thì sử dụng date_preset thay vì start_date và end_date.
         """
         ads = []
-        url = f"{self.base_url}/{account_id}/insights"
+        url = f"{self.base_url}/{account_id}/ads"
         filtering_structure = [
             {
                 'field': 'adset.id',
@@ -338,9 +334,8 @@ class FacebookAdsExtractor:
 
         if date_preset and date_preset in DATE_PRESET:
             params = {
-                'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,ad_id,ad_name,created_time,date_start,date_stop',
+                'fields': 'account_id,campaign_id,adset_id,id,name,created_time,ad_schedule_start_time,ad_schedule_end_time',
                 'access_token': self.access_token,
                 'limit': 100,
                 'date_preset': date_preset
@@ -348,9 +343,8 @@ class FacebookAdsExtractor:
             logger.info(f"Lấy quảng cáo cho tổng {len(adset_id)} nhóm quảng cáo thuộc tài khoản {account_id} trong khoảng '{date_preset}'...")
         elif start_date and end_date:
             params = {
-                'level': 'ad',
                 'filtering': filtering_json_string,
-                'fields': 'campaign_id,adset_id,ad_id,ad_name,created_time,date_start,date_stop',
+                'fields': 'account_id,campaign_id,adset_id,id,name,created_time,ad_schedule_start_time,ad_schedule_end_time',
                 'access_token': self.access_token,
                 'limit': 100,
                 'time_range': json.dumps({
@@ -409,16 +403,19 @@ class FacebookAdsExtractor:
             'limit': 100,
             'fields': 'impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
             'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
-            'breakdowns': 'publisher_platform,platform_position',
+            'breakdowns': 'publisher_platform,platform_position,gender,age,city',
         }
 
         filtering_structure = []
         if campaign_id:
             filtering_structure.append({'field': 'campaign.id', 'operator': 'IN', 'value': campaign_id})
-        if adset_id:
+            filtering_structure.append({'level': 'campaign'})
+        elif adset_id:
             filtering_structure.append({'field': 'adset.id', 'operator': 'IN', 'value': adset_id})
-        if ad_id:
+            filtering_structure.append({'level': 'adset'})
+        elif ad_id:
             filtering_structure.append({'field': 'ad.id', 'operator': 'IN', 'value': ad_id})
+            filtering_structure.append({'level': 'ad'})
         
         if filtering_structure:
             params['filtering'] = json.dumps(filtering_structure)
@@ -478,7 +475,7 @@ class FacebookAdsExtractor:
             'limit': 100,
             'fields': 'objective,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
             'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
-            'breakdowns': 'publisher_platform,platform_position',
+            'breakdowns': 'publisher_platform,platform_position,gender,age,city',
         }
 
         # Chỉ sử dụng date_preset nếu không có time_range.
