@@ -10,23 +10,22 @@
 let spendTrendChartInstance = null;
 let platformChartInstance = null;
 
-// [THAY ĐỔI] Biến cho các <select> DOM element
-let elAccount, elTime; // Thay thế s2Account, s2Time
+let elAccount, elTime;
 let elCampaigns, elAdsets, elAds;
+
+// [MỚI] Thêm biến cho 2 dropdown của biểu đồ tròn
+let elChartMetric, elChartDimension;
 
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // [QUAN TRỌNG]
-    // Khởi tạo UI của thư viện multiselect-dropdown TRƯỚC TIÊN
-    MultiselectDropdown(window.MultiselectDropdownOptions); //
+    MultiselectDropdown(window.MultiselectDropdownOptions); 
 
-    // Giờ mới chạy các hàm logic của dashboard
     feather.replace();
     initializeCharts();
     initializeSelects(); 
     setupEventListeners();
-    loadAccountDropdown(); // Tải tài khoản ngay khi bắt đầu
+    loadAccountDropdown();
 });
 
 // --- KHỞI TẠO GIAO DIỆN ---
@@ -61,35 +60,40 @@ function initializeCharts() {
     });
 }
 
-/**
- * [THAY ĐỔI] Khởi tạo các dropdown
- * - Lấy DOM element cho tất cả
- */
 function initializeSelects() {
-    // [XÓA BỎ] Cài đặt chung cho Select2
-
-    // 1. Dropdown Tài khoản (Dùng DOM)
+    // 1. Dropdown Tài khoản
     elAccount = document.getElementById('filter-ad-account');
 
-    // 2. Dropdown Thời gian (Dùng DOM)
+    // 2. Dropdown Thời gian
     elTime = document.getElementById('filter-time');
 
-    // 3. Lấy DOM elements cho các multi-select
-    elCampaigns = document.getElementById('filter-campaigns'); //
-    elAdsets = document.getElementById('filter-adsets'); //
-    elAds = document.getElementById('filter-ads'); //
+    // 3. Multi-selects
+    elCampaigns = document.getElementById('filter-campaigns');
+    elAdsets = document.getElementById('filter-adsets');
+    elAds = document.getElementById('filter-ads');
+
+    // [MỚI] Lấy DOM elements cho 2 dropdown của biểu đồ tròn
+    elChartMetric = document.getElementById('chart-metric');
+    elChartDimension = document.getElementById('chart-dimension');
+
+    // [MỚI] Set giá trị mặc định (bạn có thể đổi ở đây)
+    elChartMetric.value = 'purchases';
+    elChartDimension.value = 'placement';
 
     // Vô hiệu hóa tất cả dropdown con ban đầu
     elAccount.disabled = true;
     elTime.disabled = true;
-    elCampaigns.disabled = true; //
-    elAdsets.disabled = true; //
-    elAds.disabled = true; //
+    elCampaigns.disabled = true;
+    elAdsets.disabled = true;
+    elAds.disabled = true;
     
-    // Yêu cầu thư viện cập nhật UI cho các multi-select
-    elCampaigns.loadOptions(); //
-    elAdsets.loadOptions(); //
-    elAds.loadOptions(); //
+    // [MỚI] Vô hiệu hóa cả dropdown của biểu đồ
+    elChartMetric.disabled = true;
+    elChartDimension.disabled = true;
+    
+    elCampaigns.loadOptions();
+    elAdsets.loadOptions();
+    elAds.loadOptions();
 }
 
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
@@ -99,42 +103,36 @@ function setupEventListeners() {
     document.getElementById('btn-refresh-data').addEventListener('click', handleRefreshData);
     document.getElementById('btn-apply-filters').addEventListener('click', handleApplyFilters);
 
-    // [THAY ĐỔI] Sự kiện cho select thời gian (elTime)
+    // Filter thời gian
     elTime.addEventListener('change', (e) => {
         const value = e.currentTarget.value;
         const customDateRange = document.getElementById('custom-date-range');
         
         if (value === 'custom') {
             customDateRange.classList.remove('hidden');
-            // Khi chọn "Tùy chỉnh", ta reset các dropdown con
-            // vì ngày cũ (ví dụ "Hôm nay") không còn hợp lệ.
-            // Chúng ta KHÔNG tải lại, mà chờ người dùng nhập ngày.
             resetDropdown(elCampaigns);
             resetDropdown(elAdsets);
             resetDropdown(elAds);
         } else {
             customDateRange.classList.add('hidden');
-            // Nếu chọn preset (ví dụ: "Hôm nay"), tải lại ngay
             triggerCampaignLoad();
         }
     });
 
-    // [MỚI] Thêm sự kiện cho ô nhập ngày tùy chỉnh
+    // Filter ngày tùy chỉnh
     document.getElementById('date-from').addEventListener('change', handleCustomDateChange);
     document.getElementById('date-to').addEventListener('change', handleCustomDateChange);
 
-    // Sự kiện cho select tài khoản (elAccount)
+    // Filter tài khoản
     elAccount.addEventListener('change', () => {
         triggerCampaignLoad();
     });
 
-    // Sự kiện cho multi-select (giữ nguyên)
+    // Filter Campaigns
     elCampaigns.addEventListener('change', () => { 
         const selectedCampaigns = Array.from(elCampaigns.selectedOptions).map(o => o.value); 
-        
         resetDropdown(elAdsets);
         resetDropdown(elAds);
-        
         if (selectedCampaigns && selectedCampaigns.length > 0) {
             loadAdsetDropdown(selectedCampaigns);
             elAdsets.disabled = false;
@@ -142,11 +140,10 @@ function setupEventListeners() {
         }
     });
 
+    // Filter Adsets
     elAdsets.addEventListener('change', () => { 
         const selectedAdsets = Array.from(elAdsets.selectedOptions).map(o => o.value); 
-        
         resetDropdown(elAds);
-        
         if (selectedAdsets && selectedAdsets.length > 0) {
             loadAdDropdown(selectedAdsets);
             elAds.disabled = false;
@@ -155,8 +152,13 @@ function setupEventListeners() {
     });
 
     elAds.addEventListener('change', () => { 
-        // Không cần làm gì khi chọn Ads
+        // Không cần làm gì
     });
+
+    // [MỚI] Thêm sự kiện cho 2 dropdown của biểu đồ tròn
+    // Khi thay đổi, gọi hàm handlePieChartUpdate
+    elChartMetric.addEventListener('change', handlePieChartUpdate);
+    elChartDimension.addEventListener('change', handlePieChartUpdate);
 }
 
 // --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
@@ -197,32 +199,47 @@ async function handleRefreshData() {
 }
 
 async function handleApplyFilters() {
-    // (Giữ nguyên)
     const button = document.getElementById('btn-apply-filters');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
 
-    const filters = getFilterPayload();
+    // [THAY ĐỔI] Lấy payload của biểu đồ tròn một cách linh động
+    const pieChartFilters = getPieChartPayload();
     
-    if (!filters) {
+    // getPieChartPayload đã bao gồm cả getFilterPayload
+    // nên nếu nó null, nghĩa là filter cơ bản đã lỗi.
+    if (!pieChartFilters) {
         setButtonIdle(button, originalText);
         return;
     }
+    
+    // Gán lại filters từ pieChartFilters (vì getPieChartPayload đã gộp)
+    const filters = pieChartFilters;
 
     try {
-        const [overviewRes, chartRes] = await Promise.all([
+        // [THAY ĐỔI] Chúng ta gọi cả 3 API cùng lúc
+        const [overviewRes, chartRes, pieChartRes] = await Promise.all([
+            // 1. Overview
             fetch('/api/overview_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filters)
+                body: JSON.stringify(filters) // Dùng filters chung
             }),
+            // 2. Line Chart
             fetch('/api/chart_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filters)
+                body: JSON.stringify(filters) // Dùng filters chung
+            }),
+            // 3. Pie Chart
+            fetch('/api/breakdown_chart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pieChartFilters) // Dùng payload riêng của pie
             })
         ]);
 
+        // Xử lý lỗi
         if (!overviewRes.ok) {
             const err = await overviewRes.json();
             throw new Error(`Lỗi overview: ${err.error}`);
@@ -231,12 +248,25 @@ async function handleApplyFilters() {
             const err = await chartRes.json();
             throw new Error(`Lỗi chart: ${err.error}`);
         }
+        if (!pieChartRes.ok) { // [MỚI]
+            const err = await pieChartRes.json();
+            throw new Error(`Lỗi pie chart: ${err.error}`);
+        }
 
+        // Lấy JSON
         const overviewData = await overviewRes.json();
         const chartData = await chartRes.json();
+        const pieChartData = await pieChartRes.json(); // [MỚI]
 
+        // Render dữ liệu
         renderOverviewData(overviewData.scorecards);
         renderChartData(chartData);
+        
+        // [THAY ĐỔI] Render pie chart với tiêu đề động
+        const metricText = elChartMetric.options[elChartMetric.selectedIndex].text;
+        const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
+        renderPieChartData(pieChartData, `${metricText} theo ${dimText}`);
+
         
         const tableBody = document.getElementById('campaign-table-body');
         if (tableBody) {
@@ -251,10 +281,57 @@ async function handleApplyFilters() {
     }
 }
 
+/**
+ * [MỚI] Hàm này CHỈ cập nhật biểu đồ tròn
+ * (Được gọi khi thay đổi metric hoặc dimension)
+ */
+async function handlePieChartUpdate() {
+    console.log("Đang cập nhật biểu đồ tròn...");
+    
+    // 1. Lấy payload (bao gồm filter chung + filter riêng của pie)
+    const payload = getPieChartPayload();
+    if (!payload) {
+        return; // Lỗi đã được hiển thị bởi getPieChartPayload
+    }
+
+    // TODO: Thêm hiệu ứng loading cho biểu đồ tròn (tùy chọn)
+    // platformChartInstance.options.plugins.title.text = 'Đang tải...';
+    // platformChartInstance.update();
+            
+    try {
+        // 2. Chỉ gọi API của biểu đồ breakdown
+        const response = await fetch('/api/breakdown_chart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(`Lỗi pie chart: ${err.error}`);
+        }
+        
+        const pieChartData = await response.json();
+        
+        // 3. Lấy text từ dropdown để tạo tiêu đề động
+        const metricText = elChartMetric.options[elChartMetric.selectedIndex].text;
+        const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
+        const title = `${metricText} theo ${dimText}`;
+        
+        // 4. Render lại biểu đồ
+        renderPieChartData(pieChartData, title);
+        
+    } catch (error) {
+        console.error('Lỗi khi cập nhật pie chart:', error);
+        showNotification(error.message, 'error');
+        renderPieChartData(null, 'Lỗi tải dữ liệu');
+    }
+}
+
+
 // --- CÁC HÀM TẢI DROPDOWN ---
 
 async function loadAccountDropdown() {
-    // [THAY ĐỔI] Dùng DOM và helper
     setDropdownLoading(elAccount, 'Đang tải tài khoản...');
     
     try {
@@ -262,32 +339,35 @@ async function loadAccountDropdown() {
         if (!response.ok) throw new Error('Lỗi mạng khi tải tài khoản');
         const accounts = await response.json();
         
-        elAccount.innerHTML = ''; // [THAY ĐỔI]
+        elAccount.innerHTML = '';
         
         accounts.forEach(c => {
             const idString = String(c.id);
             const lastFourDigits = idString.slice(-4);
             const newText = `${c.name} (${lastFourDigits})`;
             const option = new Option(newText, c.id);
-            elAccount.appendChild(option); // [THAY ĐỔI]
+            elAccount.appendChild(option);
         });
 
-        elAccount.disabled = false; // [THAY ĐỔI]
-        elTime.disabled = false; // Đồng thời mở khóa "Thời gian"
+        elAccount.disabled = false;
+        elTime.disabled = false;
+        
+        // [MỚI] Mở khóa 2 dropdown của biểu đồ tròn
+        elChartMetric.disabled = false;
+        elChartDimension.disabled = false;
 
         if (accounts.length > 0) {
-            elAccount.value = accounts[0].id; // [THAY ĐỔI]
-            // [QUAN TRỌNG] Tự kích hoạt sự kiện change để tải campaigns
+            elAccount.value = accounts[0].id;
             elAccount.dispatchEvent(new Event('change'));
         }
     } catch (error) {
         console.error('Lỗi tải tài khoản:', error);
-        setDropdownLoading(elAccount, 'Lỗi tải tài khoản'); // [THAY ĐỔI]
+        setDropdownLoading(elAccount, 'Lỗi tải tài khoản');
     }
 }
 
 async function loadCampaignDropdown(accountId, dateParams) {
-    // (Giữ nguyên) - Đã dùng logic cho multiselect
+    // (Giữ nguyên)
     setDropdownLoading(elCampaigns, 'Đang tải chiến dịch...');
     
     try {
@@ -316,7 +396,7 @@ async function loadCampaignDropdown(accountId, dateParams) {
 
 
 async function loadAdsetDropdown(campaignIds) {
-    // (Giữ nguyên) - Đã dùng logic cho multiselect
+    // (Giữ nguyên)
     setDropdownLoading(elAdsets, 'Đang tải nhóm QC...');
     
     try {
@@ -344,7 +424,7 @@ async function loadAdsetDropdown(campaignIds) {
 }
 
 async function loadAdDropdown(adsetIds) {
-    // (Giữ nguyên) - Đã dùng logic cho multiselect
+    // (Giữ nguyên)
     setDropdownLoading(elAds, 'Đang tải quảng cáo...');
     
     try {
@@ -372,7 +452,7 @@ async function loadAdDropdown(adsetIds) {
 }
 
 
-// --- CÁC HÀM RENDER DỮ LIỆU (Giữ nguyên) ---
+// --- CÁC HÀM RENDER DỮ LIỆU ---
 
 function renderOverviewData(data) {
     // (Giữ nguyên)
@@ -438,13 +518,42 @@ function renderChartData(chartData) {
     }
 }
 
+/**
+ * [THAY ĐỔI] Hàm render biểu đồ tròn (pie chart)
+ * (Được cập nhật từ phiên bản trước)
+ * @param {object} pieChartData - Dữ liệu từ API (/api/breakdown_chart)
+ * @param {string} title - Tiêu đề động cho biểu đồ
+ */
+function renderPieChartData(pieChartData, title = 'Breakdown') {
+    if (platformChartInstance) {
+        // Kiểm tra xem có dữ liệu hay không
+        if (pieChartData && pieChartData.labels && pieChartData.labels.length > 0) {
+            platformChartInstance.data.labels = pieChartData.labels;
+            platformChartInstance.data.datasets = pieChartData.datasets;
+            platformChartInstance.options.plugins.title.text = title; // Cập nhật tiêu đề
+        } else {
+            // Nếu không có dữ liệu (hoặc là null do lỗi)
+            platformChartInstance.data.labels = ['Không có dữ liệu'];
+            platformChartInstance.data.datasets = [{ 
+                label: 'Phân bổ', 
+                data: [1], 
+                backgroundColor: ['#E5E7EB'], 
+                hoverOffset: 4 
+            }];
+            // Sử dụng tiêu đề được truyền vào (ví dụ: 'Lỗi tải dữ liệu' hoặc 'Không tìm thấy dữ liệu')
+            platformChartInstance.options.plugins.title.text = (title === 'Breakdown') ? 'Không tìm thấy dữ liệu' : title;
+        }
+        platformChartInstance.update();
+    }
+}
+
 
 // --- CÁC HÀM TRỢ GIÚP (HELPERS) ---
 
 function getFilterPayload() {
+    // (Giữ nguyên)
     const filters = {};
     
-    // [THAY ĐỔI] Lấy giá trị từ DOM
     filters.account_id = elAccount.value;
     if (!filters.account_id) {
         showNotification('Vui lòng chọn một Tài khoản Quảng cáo.', 'error');
@@ -459,7 +568,6 @@ function getFilterPayload() {
     filters.start_date = dateParams.start_date;
     filters.end_date = dateParams.end_date;
 
-    // (Giữ nguyên) Lấy giá trị từ multi-select DOM
     const campaignIds = Array.from(elCampaigns.selectedOptions).map(o => o.value);
     if (campaignIds.length > 0) {
         filters.campaign_ids = campaignIds;
@@ -478,8 +586,35 @@ function getFilterPayload() {
     return filters;
 }
 
+/**
+ * [MỚI] Hàm helper để lấy payload đầy đủ cho biểu đồ tròn
+ */
+function getPieChartPayload() {
+    // 1. Lấy các filter cơ bản (ngày, tài khoản, campaign...)
+    const baseFilters = getFilterPayload();
+    if (!baseFilters) {
+        return null; // Lỗi đã được hiển thị bởi getFilterPayload
+    }
+    
+    // 2. Lấy các filter riêng của biểu đồ tròn (metric, dimension)
+    const metric = elChartMetric.value;
+    const dimension = elChartDimension.value;
+    
+    if (!metric || !dimension) {
+        showNotification('Vui lòng chọn Chỉ số và Chiều cho biểu đồ tròn.', 'error');
+        return null;
+    }
+
+    // 3. Gộp chúng lại và trả về
+    return {
+        ...baseFilters,
+        metric: metric,
+        dimension: dimension
+    };
+}
+
 function getDateFilterParams(forRefresh = false) {
-    // (Giữ nguyên) - Đã dùng DOM chuẩn
+    // (Giữ nguyên)
     const timeFilter = document.getElementById('filter-time');
     let date_preset = timeFilter.value;
     let start_date = document.getElementById('date-from').value;
@@ -507,42 +642,30 @@ function getDateFilterParams(forRefresh = false) {
     }
 }
 
-/**
- * [THAY ĐỔI] Reset một dropdown
- * Phân biệt giữa multi-select (có .loadOptions) và select đơn (không có)
- */
 function resetDropdown(instance) {
+    // (Giữ nguyên)
     if (!instance) return;
-
-    if (instance.loadOptions) { // [THAY ĐỔI]
-        // Đây là multi-select (Campaigns, Adsets, Ads)
+    if (instance.loadOptions) {
         instance.innerHTML = '';
         instance.disabled = true;
-        instance.loadOptions(); // Cập nhật UI của thư viện
+        instance.loadOptions();
     } else {
-        // Đây là select đơn (Account, Time)
         instance.innerHTML = '';
         instance.disabled = true;
     }
 }
 
-/**
- * [THAY ĐỔI] Set trạng thái "Loading..."
- * Phân biệt giữa multi-select (có .loadOptions) và select đơn (không có)
- */
 function setDropdownLoading(instance, loadingText) {
+    // (Giữ nguyên)
     if (!instance) return;
-
-    if (instance.loadOptions) { // [THAY ĐỔI]
-        // Đây là multi-select
+    if (instance.loadOptions) {
         instance.innerHTML = '';
         instance.disabled = true;
         instance.setAttribute('placeholder', loadingText);
-        instance.loadOptions(); // Cập nhật UI của thư viện
+        instance.loadOptions();
     } else {
-        // Đây là select đơn
-        instance.innerHTML = ''; // Xóa sạch
-        instance.appendChild(new Option(loadingText, '')); // Thêm option "Loading..."
+        instance.innerHTML = '';
+        instance.appendChild(new Option(loadingText, ''));
         instance.disabled = true;
     }
 }
@@ -556,7 +679,7 @@ function setButtonLoading(button, loadingText) {
 }
 
 function setButtonIdle(button, originalText) {
-    // (Giữ nguyên)
+    // (GiGit nguyên)
     button.disabled = false;
     const span = button.querySelector('span');
     if (span) span.innerText = originalText;
@@ -574,14 +697,11 @@ function showNotification(message, type = 'info') {
     }
 }
 
-/**
- * [MỚI] Xử lý sự kiện khi ngày tùy chỉnh (from/to) thay đổi
- */
 function handleCustomDateChange() {
+    // (Giữ nguyên)
     const dateFrom = document.getElementById('date-from').value;
     const dateTo = document.getElementById('date-to').value;
     
-    // Chỉ trigger load lại campaign nếu cả hai ngày đã được chọn
     if (dateFrom && dateTo) {
         console.log("Ngày tùy chỉnh đã hợp lệ. Đang tải lại campaigns...");
         triggerCampaignLoad();
@@ -589,11 +709,11 @@ function handleCustomDateChange() {
 }
 
 function triggerCampaignLoad() {
-    const accountId = elAccount.value; // [THAY ĐỔI]
+    // (Giữ nguyên)
+    const accountId = elAccount.value;
     const dateParams = getDateFilterParams();
     console.log("triggerCampaignLoad được gọi. Giá trị dateParams:", dateParams);
     
-    // Reset các multi-select (hàm này đã được cập nhật)
     resetDropdown(elCampaigns);
     resetDropdown(elAdsets);
     resetDropdown(elAds);
@@ -602,5 +722,3 @@ function triggerCampaignLoad() {
         loadCampaignDropdown(accountId, dateParams);
     }
 }
-
-// [ĐÃ XÓA] Hàm updateSelect2Counter và setupSelectAll

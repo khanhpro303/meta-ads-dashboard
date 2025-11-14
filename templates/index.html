@@ -190,6 +190,25 @@
                 </div>
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ theo Nền tảng</h2>
+                    <div class="flex items-center space-x-4 mb-4">
+                        <div>
+                            <label for="chart-metric" class="block text-xs font-medium text-gray-500">Chỉ số</label>
+                            <select id="chart-metric" name="chart-metric" class="mt-1 block w-full pl-3 pr-10 py-1 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
+                                <option value="spend">Chi tiêu</option>
+                                <option value="impressions">Hiển thị</option>
+                                <option value="purchases">Lượt mua</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="chart-dimension" class="block text-xs font-medium text-gray-500">Chiều</label>
+                            <select id="chart-dimension" name="chart-dimension" class="mt-1 block w-full pl-3 pr-10 py-1 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
+                                <option value="platform">Nền tảng</option>
+                                <option value="placement">Vị trí hiển thị</option>
+                                <option value="gender">Giới tính</option>
+                                <option value="age">Độ tuổi</option>
+                            </select>
+                        </div>
+                    </div>
                     <canvas id="platformChart"></canvas>
                 </div>
             </div>

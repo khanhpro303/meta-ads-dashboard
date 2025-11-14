@@ -481,5 +481,164 @@ def get_chart_data():
     finally:
         session.close()
 
+@app.route('/api/breakdown_chart', methods=['POST'])
+def get_breakdown_chart_data():
+    """
+    Lấy dữ liệu đã được nhóm theo một chiều (dimension) cụ thể
+    để vẽ biểu đồ tròn (pie/doughnut).
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. Lấy tham số động (Universal parameters) ===
+        metric_name = data.get('metric', 'purchases') # Ví dụ: 'purchases', 'spend', 'impressions'. Mặc định 'purchases'
+        dimension_name = data.get('dimension', 'placement') # Ví dụ: 'placement', 'platform', 'gender', 'age'. Mặc định 'placement'
+
+        if not metric_name or not dimension_name:
+            return jsonify({'error': 'Vui lòng cung cấp cả "metric" và "dimension".'}), 400
+
+        # === 2. Xử lý bộ lọc ngày (Giống các hàm khác) ===
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
+
+        # === 3. Ánh xạ Metric (Chỉ số) sang cột SQLAlchemy ===
+        # Ánh xạ tên metric từ request sang cột và hàm tổng hợp
+        metric_mapping = {
+            'spend': func.sum(FactPerformance.spend),
+            'impressions': func.sum(FactPerformance.impressions),
+            'clicks': func.sum(FactPerformance.clicks),
+            'purchases': func.sum(FactPerformance.purchases),
+            'purchase_value': func.sum(FactPerformance.purchase_value),
+            'messages': func.sum(FactPerformance.messages_started),
+            'reach': func.sum(FactPerformance.reach),
+            'post_engagement': func.sum(FactPerformance.post_engagement),
+            'link_click': func.sum(FactPerformance.link_click),
+        }
+        
+        metric_column = metric_mapping.get(metric_name)
+        if metric_column is None:
+            return jsonify({'error': f'Metric không hợp lệ: {metric_name}'}), 400
+        
+        # Đặt nhãn cho cột metric để dễ dàng truy cập
+        metric_column = metric_column.label('total_metric')
+
+        # === 4. Ánh xạ Dimension (Chiều) sang Bảng và Cột ===
+        # Ánh xạ này quyết định cột nào sẽ được GROUP BY và bảng nào sẽ được JOIN
+        dimension_mapping = {
+            # Trường hợp cần JOIN bảng Dim
+            'placement': {
+                'model': DimPlacement, 
+                'join_on': FactPerformance.placement_id == DimPlacement.placement_id, 
+                'column': DimPlacement.placement_name
+            },
+            'platform': {
+                'model': DimPlatform, 
+                'join_on': FactPerformance.platform_id == DimPlatform.platform_id, 
+                'column': DimPlatform.platform_name
+            },
+            # Trường hợp không cần JOIN (dữ liệu nằm ngay trên FactPerformance)
+            'gender': {
+                'model': None, 
+                'join_on': None, 
+                'column': FactPerformance.gender
+            },
+            'age': {
+                'model': None, 
+                'join_on': None, 
+                'column': FactPerformance.age
+            },
+            'city': {
+                'model': None, 
+                'join_on': None, 
+                'column': FactPerformance.city
+            }
+            # Bạn có thể mở rộng thêm cho 'campaign', 'adset' nếu muốn
+        }
+
+        dim_config = dimension_mapping.get(dimension_name)
+        if dim_config is None:
+            return jsonify({'error': f'Dimension không hợp lệ: {dimension_name}'}), 400
+        
+        dimension_column = dim_config['column'].label('dimension_label')
+
+        # === 5. Xây dựng câu truy vấn động ===
+        query = select(
+            dimension_column,
+            metric_column
+        ).join(
+            DimDate, FactPerformance.date_key == DimDate.date_key
+        )
+
+        # Thêm JOIN động nếu dimension yêu cầu
+        if dim_config['model'] is not None and dim_config['join_on'] is not None:
+            query = query.join(dim_config['model'], dim_config['join_on'])
+            
+        # Áp dụng bộ lọc thời gian
+        query = query.filter(DimDate.full_date.between(start_date, end_date))
+            
+        # Áp dụng các bộ lọc (campaign, adset, ad)
+        filters = []
+        if data.get('campaign_ids'):
+            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+        if data.get('adset_ids'):
+            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+        if data.get('ad_ids'):
+            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+        
+        if filters:
+            query = query.where(and_(*filters))
+
+        # Nhóm theo dimension và sắp xếp theo metric giảm dần
+        query = query.group_by(dimension_column).order_by(metric_column.desc())
+
+        # === 6. Thực thi và Định dạng kết quả cho Chart.js ===
+        results = session.execute(query).all()
+
+        labels = []
+        chart_data = []
+
+        if not results:
+            return jsonify({'labels': [], 'datasets': [{'data': []}]})
+
+        for row in results:
+            labels.append(row.dimension_label or 'Không xác định') # Xử lý giá trị NULL
+            chart_data.append(row.total_metric or 0)
+
+        # Tự động tạo dải màu cho biểu đồ pie
+        num_labels = len(labels)
+        colors = [f'hsl({(i * 360 / num_labels) % 360}, 70%, 60%)' for i in range(num_labels)]
+
+        chartjs_data = {
+            'labels': labels,
+            'datasets': [
+                {
+                    'data': chart_data,
+                    'backgroundColor': colors,
+                    'hoverBackgroundColor': colors
+                }
+            ]
+        }
+
+        return jsonify(chartjs_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu biểu đồ breakdown: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
+
+
+
 if __name__ == '__main__':
     app.run(debug=True)
