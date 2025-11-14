@@ -649,16 +649,15 @@ def main():
                 first_account_id = accounts[4]['id']
                 # Test xuất cho ngày 11-11-2025 thôi
                 start_date = '2025-11-11'
-                end_date = '2025-11-11'
+                end_date = '2025-11-12'
                 date_preset = 'last_7d'
                 # Test lấy chiến dịch
-                campaigns = extractor.get_campaigns_for_account(account_id=first_account_id, date_preset=date_preset)    
+                campaigns = extractor.get_campaigns_for_account(account_id=first_account_id, start_date=start_date, end_date=end_date)    
                 # Lấy toàn bộ insights
-                insights = extractor.get_all_insights_demo(account_id=first_account_id, date_preset=date_preset)
+                insights = extractor.get_all_insights_demo(account_id=first_account_id, start_date=start_date, end_date=end_date)
                 # Lưu
                 extractor.save_to_json(data={
                     'account_id': first_account_id,
-                    'campaigns': campaigns,
                     'insights': insights
                 }, filename="fbads_sample_data.json")
         else:

@@ -10,7 +10,7 @@ from matplotlib.dates import relativedelta
 from sqlalchemy import func, select, and_, case
 
 # Import các lớp từ database_manager
-from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformance, DimDate, DimPlatform, DimPlacement
+from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, FactPerformanceDemographic
 
 DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
 # --- CẤU HÌNH CƠ BẢN ---
@@ -303,19 +303,19 @@ def get_overview_data():
 
         # --- Xây dựng câu truy vấn động dựa trên bộ lọc ---
         query = select(
-            func.sum(FactPerformance.spend).label('total_spend'),
-            func.sum(FactPerformance.impressions).label('total_impressions'),
-            func.sum(FactPerformance.clicks).label('total_clicks'),
-            func.avg(FactPerformance.ctr).label('avg_ctr'),
-            func.avg(FactPerformance.cpm).label('avg_cpm'),
-            func.avg(FactPerformance.frequency).label('avg_frequency'),
-            func.sum(FactPerformance.reach).label('total_reach'),
-            func.sum(FactPerformance.messages_started).label('total_messages'),
-            func.sum(FactPerformance.purchases).label('total_purchases'),
-            func.sum(FactPerformance.purchase_value).label('total_purchase_value'),
-            func.sum(FactPerformance.post_engagement).label('total_post_engagement'),
-            func.sum(FactPerformance.link_click).label('total_link_click')
-        ).join(DimDate, FactPerformance.date_key == DimDate.date_key)
+            func.sum(FactPerformancePlatform.spend).label('total_spend'),
+            func.sum(FactPerformancePlatform.impressions).label('total_impressions'),
+            func.sum(FactPerformancePlatform.clicks).label('total_clicks'),
+            func.avg(FactPerformancePlatform.ctr).label('avg_ctr'),
+            func.avg(FactPerformancePlatform.cpm).label('avg_cpm'),
+            func.avg(FactPerformancePlatform.frequency).label('avg_frequency'),
+            func.sum(FactPerformancePlatform.reach).label('total_reach'),
+            func.sum(FactPerformancePlatform.messages_started).label('total_messages'),
+            func.sum(FactPerformancePlatform.purchases).label('total_purchases'),
+            func.sum(FactPerformancePlatform.purchase_value).label('total_purchase_value'),
+            func.sum(FactPerformancePlatform.post_engagement).label('total_post_engagement'),
+            func.sum(FactPerformancePlatform.link_click).label('total_link_click')
+        ).join(DimDate, FactPerformancePlatform.date_key == DimDate.date_key)
 
         # Áp dụng bộ lọc thời gian
         if start_date and end_date:
@@ -324,11 +324,11 @@ def get_overview_data():
         # Áp dụng các bộ lọc ID
         filters = []
         if data.get('campaign_ids'):
-            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+            filters.append(FactPerformancePlatform.campaign_id.in_(data['campaign_ids']))
         if data.get('adset_ids'):
-            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+            filters.append(FactPerformancePlatform.adset_id.in_(data['adset_ids']))
         if data.get('ad_ids'):
-            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+            filters.append(FactPerformancePlatform.ad_id.in_(data['ad_ids']))
         
         if filters:
             query = query.where(and_(*filters))
@@ -401,10 +401,10 @@ def get_chart_data():
         # --- Xây dựng câu truy vấn động ---
         query = select(
             DimDate.full_date,
-            func.sum(FactPerformance.spend).label('daily_spend'),
-            func.sum(FactPerformance.impressions).label('daily_impressions')
+            func.sum(FactPerformancePlatform.spend).label('daily_spend'),
+            func.sum(FactPerformancePlatform.impressions).label('daily_impressions')
         ).join(
-            FactPerformance, FactPerformance.date_key == DimDate.date_key
+            FactPerformancePlatform, FactPerformancePlatform.date_key == DimDate.date_key
         ).filter(
             DimDate.full_date.between(start_date, end_date)
         )
@@ -412,11 +412,11 @@ def get_chart_data():
         # Áp dụng các bộ lọc ID nếu có
         filters = []
         if data.get('campaign_ids'):
-            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+            filters.append(FactPerformancePlatform.campaign_id.in_(data['campaign_ids']))
         if data.get('adset_ids'):
-            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+            filters.append(FactPerformancePlatform.adset_id.in_(data['adset_ids']))
         if data.get('ad_ids'):
-            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+            filters.append(FactPerformancePlatform.ad_id.in_(data['ad_ids']))
         
         if filters:
             query = query.where(and_(*filters))
@@ -486,19 +486,21 @@ def get_breakdown_chart_data():
     """
     Lấy dữ liệu đã được nhóm theo một chiều (dimension) cụ thể
     để vẽ biểu đồ tròn (pie/doughnut).
+    Logic này sẽ tự động chọn bảng Fact (Platform hoặc Demographic)
+    dựa trên dimension được yêu cầu.
     """
     session = db_manager.SessionLocal()
     try:
         data = request.get_json()
         
-        # === 1. Lấy tham số động (Universal parameters) ===
-        metric_name = data.get('metric', 'purchases') # Ví dụ: 'purchases', 'spend', 'impressions'. Mặc định 'purchases'
-        dimension_name = data.get('dimension', 'placement') # Ví dụ: 'placement', 'platform', 'gender', 'age'. Mặc định 'placement'
+        # === 1. Lấy tham số động ===
+        metric_name = data.get('metric', 'purchases')
+        dimension_name = data.get('dimension', 'placement')
 
         if not metric_name or not dimension_name:
             return jsonify({'error': 'Vui lòng cung cấp cả "metric" và "dimension".'}), 400
 
-        # === 2. Xử lý bộ lọc ngày (Giống các hàm khác) ===
+        # === 2. Xử lý bộ lọc ngày ===
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
@@ -512,58 +514,33 @@ def get_breakdown_chart_data():
             end_date = datetime.today().date()
             start_date = end_date.replace(day=1)
 
-        # === 3. Ánh xạ Metric (Chỉ số) sang cột SQLAlchemy ===
-        # Ánh xạ tên metric từ request sang cột và hàm tổng hợp
-        metric_mapping = {
-            'spend': func.sum(FactPerformance.spend),
-            'impressions': func.sum(FactPerformance.impressions),
-            'clicks': func.sum(FactPerformance.clicks),
-            'purchases': func.sum(FactPerformance.purchases),
-            'purchase_value': func.sum(FactPerformance.purchase_value),
-            'messages': func.sum(FactPerformance.messages_started),
-            'reach': func.sum(FactPerformance.reach),
-            'post_engagement': func.sum(FactPerformance.post_engagement),
-            'link_click': func.sum(FactPerformance.link_click),
-        }
-        
-        metric_column = metric_mapping.get(metric_name)
-        if metric_column is None:
-            return jsonify({'error': f'Metric không hợp lệ: {metric_name}'}), 400
-        
-        # Đặt nhãn cho cột metric để dễ dàng truy cập
-        metric_column = metric_column.label('total_metric')
-
-        # === 4. Ánh xạ Dimension (Chiều) sang Bảng và Cột ===
-        # Ánh xạ này quyết định cột nào sẽ được GROUP BY và bảng nào sẽ được JOIN
+        # === 3. Ánh xạ Dimension (Chiều) và chọn Fact Table ===
+        # Bước này quyết định cột nào sẽ được GROUP BY và bảng nào (Platform/Demographic) sẽ được truy vấn.
         dimension_mapping = {
-            # Trường hợp cần JOIN bảng Dim
             'placement': {
                 'model': DimPlacement, 
-                'join_on': FactPerformance.placement_id == DimPlacement.placement_id, 
-                'column': DimPlacement.placement_name
+                'join_on': FactPerformancePlatform.placement_id == DimPlacement.placement_id, 
+                'column': DimPlacement.placement_name,
+                'fact_table': FactPerformancePlatform # Dùng bảng Platform
             },
             'platform': {
                 'model': DimPlatform, 
-                'join_on': FactPerformance.platform_id == DimPlatform.platform_id, 
-                'column': DimPlatform.platform_name
+                'join_on': FactPerformancePlatform.platform_id == DimPlatform.platform_id, 
+                'column': DimPlatform.platform_name,
+                'fact_table': FactPerformancePlatform # Dùng bảng Platform
             },
-            # Trường hợp không cần JOIN (dữ liệu nằm ngay trên FactPerformance)
             'gender': {
                 'model': None, 
                 'join_on': None, 
-                'column': FactPerformance.gender
+                'column': FactPerformanceDemographic.gender,
+                'fact_table': FactPerformanceDemographic # Dùng bảng Demographic
             },
             'age': {
                 'model': None, 
                 'join_on': None, 
-                'column': FactPerformance.age
-            },
-            'city': {
-                'model': None, 
-                'join_on': None, 
-                'column': FactPerformance.city
+                'column': FactPerformanceDemographic.age,
+                'fact_table': FactPerformanceDemographic # Dùng bảng Demographic
             }
-            # Bạn có thể mở rộng thêm cho 'campaign', 'adset' nếu muốn
         }
 
         dim_config = dimension_mapping.get(dimension_name)
@@ -571,16 +548,53 @@ def get_breakdown_chart_data():
             return jsonify({'error': f'Dimension không hợp lệ: {dimension_name}'}), 400
         
         dimension_column = dim_config['column'].label('dimension_label')
+        FactTable = dim_config['fact_table'] # Đây là bảng Fact chính (Platform hoặc Demographic)
+
+        # === 4. Ánh xạ Metric (Chỉ số) DỰA TRÊN FactTable ===
+        
+        # Hàm trợ giúp để ánh xạ metric, quyết định SUM hay AVG
+        def get_metric_aggregator(table_model, metric_name_str):
+            # Các metric cần SUM
+            sum_metrics = {
+                'spend': table_model.spend,
+                'impressions': table_model.impressions,
+                'clicks': table_model.clicks,
+                'reach': table_model.reach,
+                'purchases': table_model.purchases,
+                'purchase_value': table_model.purchase_value,
+                'messages_started': table_model.messages_started,
+                'post_engagement': table_model.post_engagement,
+                'link_click': table_model.link_click,
+            }
+            # Các metric cần AVG
+            avg_metrics = {
+                'ctr': table_model.ctr,
+                'cpm': table_model.cpm,
+                'frequency': table_model.frequency,
+            }
+
+            if metric_name_str in sum_metrics:
+                return func.sum(sum_metrics[metric_name_str]).label('total_metric')
+            elif metric_name_str in avg_metrics:
+                return func.avg(avg_metrics[metric_name_str]).label('total_metric')
+            
+            return None
+
+        # Lấy cột metric đã được tổng hợp (SUM/AVG)
+        metric_aggregator = get_metric_aggregator(FactTable, metric_name)
+        
+        if metric_aggregator is None:
+            return jsonify({'error': f'Metric không hợp lệ: {metric_name}'}), 400
 
         # === 5. Xây dựng câu truy vấn động ===
         query = select(
             dimension_column,
-            metric_column
+            metric_aggregator # Đây là (e.g., func.sum(FactTable.spend).label('total_metric'))
         ).join(
-            DimDate, FactPerformance.date_key == DimDate.date_key
+            DimDate, FactTable.date_key == DimDate.date_key # JOIN với bảng DimDate
         )
 
-        # Thêm JOIN động nếu dimension yêu cầu
+        # Thêm JOIN động (cho placement/platform)
         if dim_config['model'] is not None and dim_config['join_on'] is not None:
             query = query.join(dim_config['model'], dim_config['join_on'])
             
@@ -588,19 +602,20 @@ def get_breakdown_chart_data():
         query = query.filter(DimDate.full_date.between(start_date, end_date))
             
         # Áp dụng các bộ lọc (campaign, adset, ad)
+        # Các bộ lọc này sẽ tự động áp dụng trên FactTable chính xác (Platform hoặc Demographic)
         filters = []
         if data.get('campaign_ids'):
-            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+            filters.append(FactTable.campaign_id.in_(data['campaign_ids']))
         if data.get('adset_ids'):
-            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+            filters.append(FactTable.adset_id.in_(data['adset_ids']))
         if data.get('ad_ids'):
-            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+            filters.append(FactTable.ad_id.in_(data['ad_ids']))
         
         if filters:
             query = query.where(and_(*filters))
 
         # Nhóm theo dimension và sắp xếp theo metric giảm dần
-        query = query.group_by(dimension_column).order_by(metric_column.desc())
+        query = query.group_by(dimension_column).order_by(metric_aggregator.desc())
 
         # === 6. Thực thi và Định dạng kết quả cho Chart.js ===
         results = session.execute(query).all()
@@ -613,7 +628,7 @@ def get_breakdown_chart_data():
 
         for row in results:
             labels.append(row.dimension_label or 'Không xác định') # Xử lý giá trị NULL
-            chart_data.append(row.total_metric or 0)
+            chart_data.append(float(row.total_metric) if row.total_metric is not None else 0)
 
         # Tự động tạo dải màu cho biểu đồ pie
         num_labels = len(labels)
@@ -641,7 +656,8 @@ def get_breakdown_chart_data():
 @app.route('/api/table_data', methods=['POST'])
 def get_table_data():
     """
-    Lấy dữ liệu hiệu suất đã được nhóm theo chiến dịch để hiển thị trong bảng.
+    Lấy dữ liệu hiệu suất đã được nhóm theo chiến dịch để hiển thị trong bảng. Chỉ lấy top 10 chiến dịch theo số lượt mua (purchases).
+    Ở đây, chúng ta sẽ tính toán thêm chỉ số CPA (Cost Per Acquisition).
     """
     session = db_manager.SessionLocal()
     try:
@@ -669,22 +685,22 @@ def get_table_data():
         # === 3. Xây dựng Metric tính toán (CPA) ===
         # Sử dụng CASE để tránh lỗi chia cho 0
         cpa_case = case(
-            (func.sum(FactPerformance.purchases) == 0, 0),
-            else_=(func.sum(FactPerformance.spend) / func.sum(FactPerformance.purchases))
+            (func.sum(FactPerformancePlatform.purchases) == 0, 0),
+            else_=(func.sum(FactPerformancePlatform.spend) / func.sum(FactPerformancePlatform.purchases))
         ).label('cpa')
 
         # === 4. Xây dựng câu truy vấn động ===
         query = select(
             DimCampaign.name.label('campaign_name'),
             DimCampaign.status,
-            func.sum(FactPerformance.spend).label('total_spend'),
-            func.sum(FactPerformance.impressions).label('total_impressions'),
-            func.sum(FactPerformance.purchases).label('total_purchases'),
+            func.sum(FactPerformancePlatform.spend).label('total_spend'),
+            func.sum(FactPerformancePlatform.impressions).label('total_impressions'),
+            func.sum(FactPerformancePlatform.purchases).label('total_purchases'),
             cpa_case
         ).join(
-            DimCampaign, FactPerformance.campaign_id == DimCampaign.campaign_id
+            DimCampaign, FactPerformancePlatform.campaign_id == DimCampaign.campaign_id
         ).join(
-            DimDate, FactPerformance.date_key == DimDate.date_key
+            DimDate, FactPerformancePlatform.date_key == DimDate.date_key
         )
 
         # === 5. Áp dụng bộ lọc ===
@@ -698,11 +714,11 @@ def get_table_data():
         # Lọc theo cấp bậc (Campaign, Adset, Ad) - (Tùy chọn)
         filters = []
         if data.get('campaign_ids'):
-            filters.append(FactPerformance.campaign_id.in_(data['campaign_ids']))
+            filters.append(FactPerformancePlatform.campaign_id.in_(data['campaign_ids']))
         if data.get('adset_ids'):
-            filters.append(FactPerformance.adset_id.in_(data['adset_ids']))
+            filters.append(FactPerformancePlatform.adset_id.in_(data['adset_ids']))
         if data.get('ad_ids'):
-            filters.append(FactPerformance.ad_id.in_(data['ad_ids']))
+            filters.append(FactPerformancePlatform.ad_id.in_(data['ad_ids']))
         
         if filters:
             query = query.where(and_(*filters))
@@ -713,9 +729,9 @@ def get_table_data():
             DimCampaign.name,
             DimCampaign.status
         ).order_by(
-            func.sum(FactPerformance.purchases).desc(),  # Sắp xếp theo lượt mua giảm dần
-            func.sum(FactPerformance.spend).asc()       # Sau đó tới chi tiêu tăng dần
-        )
+            func.sum(FactPerformancePlatform.purchases).desc(),  # Sắp xếp theo lượt mua giảm dần
+            func.sum(FactPerformancePlatform.spend).asc()       # Sau đó tới chi tiêu tăng dần
+        ).limit(10)  # Chỉ lấy top 10 chiến dịch
 
         # === 7. Thực thi và Định dạng kết quả ===
         results = session.execute(query).all()

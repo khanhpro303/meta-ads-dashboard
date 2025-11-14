@@ -134,11 +134,11 @@ class DimDate(Base):
     year = Column(Integer)
     quarter = Column(Integer)
 
-class FactPerformance(Base):
+class FactPerformancePlatform(Base):
     """
-    Bảng Fact: Lưu trữ các chỉ số hiệu suất chi tiết theo từng breakdown.
+    Bảng Fact: Lưu trữ các chỉ số hiệu suất chi tiết theo từng breakdown theo nền tảng và vị trí quảng cáo.
     """
-    __tablename__ = 'fact_performance'
+    __tablename__ = 'fact_performance_platform'
     
     # Khóa chính tự tăng
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -148,9 +148,6 @@ class FactPerformance(Base):
     ad_id = Column(String, ForeignKey('dim_ad.ad_id'), nullable=False)
     platform_id = Column(Integer, ForeignKey('dim_platform.platform_id'))
     placement_id = Column(Integer, ForeignKey('dim_placement.placement_id'))
-    gender = Column(String)
-    age = Column(String)
-    region = Column(String)
     
     spend = Column(Float, default=0.0)
     impressions = Column(BigInteger, default=0)
@@ -166,7 +163,38 @@ class FactPerformance(Base):
     post_engagement = Column(Integer, default=0)
     link_click = Column(Integer, default=0)
     
-    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', 'gender', 'age', 'region', name='_ad_performance_uc'),)
+    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'platform_id', 'placement_id', name='_ad_performance_platform_uc'),)
+
+class FactPerformanceDemographic(Base):
+    """
+    Bảng Fact: Lưu trữ các chỉ số hiệu suất chi tiết theo từng breakdown theo nhân khẩu học.
+    """
+    __tablename__ = 'fact_performance_demographic'
+    
+    # Khóa chính tự tăng
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    date_key = Column(Integer, ForeignKey('dim_date.date_key'), nullable=False)
+    campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'), nullable=False)
+    adset_id = Column(String, ForeignKey('dim_adset.adset_id'), nullable=False)
+    ad_id = Column(String, ForeignKey('dim_ad.ad_id'), nullable=False)
+    gender = Column(String)
+    age = Column(String)
+    
+    spend = Column(Float, default=0.0)
+    impressions = Column(BigInteger, default=0)
+    clicks = Column(BigInteger, default=0)
+    ctr = Column(Float, default=0.0)
+    cpm = Column(Float, default=0.0)
+    reach = Column(BigInteger, default=0)
+    frequency = Column(Float, default=0.0)
+    
+    messages_started = Column(Integer, default=0)
+    purchases = Column(Integer, default=0)
+    purchase_value = Column(Float, default=0.0)
+    post_engagement = Column(Integer, default=0)
+    link_click = Column(Integer, default=0)
+
+    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'gender', 'age', name='_ad_performance_demographic_uc'),)
 
 # --- CLASS QUẢN LÝ DATABASE ---
 
@@ -278,6 +306,7 @@ class DatabaseManager:
                 'campaign_id': camp['id'],
                 'name': camp.get('name'),
                 'objective': camp.get('objective'),
+                'status': camp.get('status'),
                 'created_time': parse_datetime_flexible(camp.get('created_time')),
                 'start_time': parse_datetime_flexible(camp.get('start_time')),
                 'stop_time': parse_datetime_flexible(camp.get('stop_time')),
@@ -290,6 +319,7 @@ class DatabaseManager:
             set_={
                 'name': stmt.excluded.name,
                 'objective': stmt.excluded.objective,
+                'status': stmt.excluded.status,
                 'created_time': stmt.excluded.created_time,
                 'start_time': stmt.excluded.start_time,
                 'stop_time': stmt.excluded.stop_time,
@@ -307,97 +337,6 @@ class DatabaseManager:
             logger.error(f"Lỗi khi Upsert Campaigns: {e}")
             session.rollback()
             raise
-        finally:
-            session.close()
-
-    def _fetch_status_from_api(self, account_id: str, level: str) -> str:
-        """
-        Hàm helper lấy trạng thái của chiến dịch, adset hoặc ad từ Meta Ads API.
-        """
-        import requests
-        status_data = []
-        url = f"{self.base_url}/{account_id}/{level}s"
-        params = {
-            'fields': 'status',
-            'access_token': os.getenv('SECRET_KEY')
-        }
-
-        page_count = 0
-        while url:
-            try:
-                page_count += 1
-                response = requests.get(url, params=params if page_count == 1 else {})
-                response.raise_for_status()
-                data = response.json()
-
-                status = data.get('data', [])
-                if not status:
-                    logger.info("Không tìm thấy thêm quảng cáo nào.")
-                    break
-
-                status_data.extend(status)
-                logger.info(f"Đã lấy được {len(status)} trạng thái cho {level} (Tổng: {len(status_data)}).")
-
-                # Xử lý phân trang (Pagination)
-                next_page_url = data.get('paging', {}).get('next')
-                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
-            
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Lỗi khi lấy trạng thái quảng cáo (Trang {page_count}): {e}")
-                if e.response is not None:
-                    logger.error(f"Response: {e.response.json()}")
-                break
-            except Exception as e:
-                logger.error(f"Lỗi không xác định: {e}")
-                break
-
-        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(status_data)} trạng thái quảng cáo.")
-        return status_data
-                
-    def _enrich_status_campaigns(self):
-        """
-        Cập nhật trường 'status' cho các chiến dịch trong dim_campaign, tránh lỗi N+1 query.
-        """
-        session = self.SessionLocal()
-        try:
-            all_campaigns = session.query(DimCampaign).all()
-            if not all_campaigns:
-                logger.info("Không có chiến dịch nào trong DB để cập nhật trạng thái.")
-                return
-
-            # 1. Gom nhóm các chiến dịch theo account_id
-            campaigns_by_account = {}
-            for camp in all_campaigns:
-                if camp.ad_account_id not in campaigns_by_account:
-                    campaigns_by_account[camp.ad_account_id] = []
-                campaigns_by_account[camp.ad_account_id].append(camp)
-
-            # 2. Gọi API cho mỗi nhóm và tạo một bản đồ trạng thái tổng hợp
-            status_map = {}
-            for account_id, _ in campaigns_by_account.items():
-                logger.info(f"Đang lấy trạng thái chiến dịch cho tài khoản: {account_id}")
-                latest_statuses = self._fetch_status_from_api(account_id, 'campaign')
-                for item in latest_statuses:
-                    status_map[item['id']] = item['status']
-            
-            # 3. Duyệt lại và cập nhật trạng thái từ bản đồ đã tạo
-            update_count = 0
-            for campaign in all_campaigns:
-                latest_status = status_map.get(campaign.campaign_id)
-                if latest_status and campaign.status != latest_status:
-                    campaign.status = latest_status
-                    campaign.updated_at = datetime.now()
-                    update_count += 1
-            
-            if update_count > 0:
-                session.commit()
-                logger.info(f"Đã cập nhật trạng thái cho {update_count} chiến dịch.")
-            else:
-                logger.info("Không có trạng thái chiến dịch nào cần cập nhật.")
-
-        except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái chiến dịch: {e}", exc_info=True)
-            session.rollback()
         finally:
             session.close()
 
@@ -433,6 +372,7 @@ class DatabaseManager:
                 'end_time': stmt.excluded.end_time,
                 # === BỔ SUNG CẬP NHẬT KHÓA NGOẠI ===
                 'campaign_id': stmt.excluded.campaign_id,
+                'ad_account_id': stmt.excluded.ad_account_id,
                 'updated_at': datetime.now()
             }
         )
@@ -446,58 +386,6 @@ class DatabaseManager:
             logger.error(f"Lỗi khi Upsert Adsets: {e}")
             session.rollback()
             raise
-        finally:
-            session.close()
-
-    def _enrich_status_adsets(self):
-        """
-        Cập nhật trường 'status' cho các nhóm quảng cáo, tránh lỗi N+1 query.
-        """
-        session = self.SessionLocal()
-        try:
-            # Lấy tất cả adset và account_id tương ứng của chúng thông qua join với DimCampaign
-            query = session.query(DimAdset, DimCampaign.ad_account_id).join(DimCampaign, DimAdset.campaign_id == DimCampaign.campaign_id)
-            all_adsets_with_account = query.all()
-
-            if not all_adsets_with_account:
-                logger.info("Không có nhóm quảng cáo nào trong DB để cập nhật trạng thái.")
-                return
-
-            # 1. Gom nhóm adset theo account_id
-            adsets_by_account = {}
-            all_adsets_objects = []
-            for adset, account_id in all_adsets_with_account:
-                if account_id not in adsets_by_account:
-                    adsets_by_account[account_id] = []
-                adsets_by_account[account_id].append(adset)
-                all_adsets_objects.append(adset)
-
-            # 2. Gọi API cho mỗi nhóm và tạo bản đồ trạng thái
-            status_map = {}
-            for account_id, _ in adsets_by_account.items():
-                logger.info(f"Đang lấy trạng thái adset cho tài khoản: {account_id}")
-                latest_statuses = self._fetch_status_from_api(account_id, 'adset')
-                for item in latest_statuses:
-                    status_map[item['id']] = item['status']
-
-            # 3. Duyệt lại và cập nhật
-            update_count = 0
-            for adset in all_adsets_objects:
-                latest_status = status_map.get(adset.adset_id)
-                if latest_status and adset.status != latest_status:
-                    adset.status = latest_status
-                    adset.updated_at = datetime.now()
-                    update_count += 1
-            
-            if update_count > 0:
-                session.commit()
-                logger.info(f"Đã cập nhật trạng thái cho {update_count} adset.")
-            else:
-                logger.info("Không có trạng thái adset nào cần cập nhật.")
-
-        except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái adset: {e}", exc_info=True)
-            session.rollback()
         finally:
             session.close()
 
@@ -552,58 +440,6 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def _enrich_status_ads(self):
-        """
-        Cập nhật trường 'status' cho các quảng cáo, tránh lỗi N+1 query.
-        """
-        session = self.SessionLocal()
-        try:
-            # Lấy tất cả ad và account_id tương ứng của chúng thông qua join với DimCampaign
-            query = session.query(DimAd, DimCampaign.ad_account_id).join(DimCampaign, DimAd.campaign_id == DimCampaign.campaign_id)
-            all_ads_with_account = query.all()
-
-            if not all_ads_with_account:
-                logger.info("Không có quảng cáo nào trong DB để cập nhật trạng thái.")
-                return
-
-            # 1. Gom nhóm ad theo account_id
-            ads_by_account = {}
-            all_ads_objects = []
-            for ad, account_id in all_ads_with_account:
-                if account_id not in ads_by_account:
-                    ads_by_account[account_id] = []
-                ads_by_account[account_id].append(ad)
-                all_ads_objects.append(ad)
-
-            # 2. Gọi API cho mỗi nhóm và tạo bản đồ trạng thái
-            status_map = {}
-            for account_id, _ in ads_by_account.items():
-                logger.info(f"Đang lấy trạng thái quảng cáo cho tài khoản: {account_id}")
-                latest_statuses = self._fetch_status_from_api(account_id, 'ad')
-                for item in latest_statuses:
-                    status_map[item['id']] = item['status']
-
-            # 3. Duyệt lại và cập nhật
-            update_count = 0
-            for ad in all_ads_objects:
-                latest_status = status_map.get(ad.ad_id)
-                if latest_status and ad.status != latest_status:
-                    ad.status = latest_status
-                    ad.updated_at = datetime.now()
-                    update_count += 1
-            
-            if update_count > 0:
-                session.commit()
-                logger.info(f"Đã cập nhật trạng thái cho {update_count} quảng cáo.")
-            else:
-                logger.info("Không có trạng thái quảng cáo nào cần cập nhật.")
-
-        except Exception as e:
-            logger.error(f"Lỗi khi cập nhật trạng thái quảng cáo: {e}", exc_info=True)
-            session.rollback()
-        finally:
-            session.close()
-
     def _get_or_create_dim_records(self, session, model, column_name: str, values: Set[str], pk_name: str) -> Dict[str, int]:
         """
         Hàm helper chung để lấy hoặc tạo các bản ghi trong bảng dimension.
@@ -639,13 +475,13 @@ class DatabaseManager:
             
         return mapping
 
-    def upsert_performance_data(self, insights_data: List[Dict[str, Any]]):
+    def upsert_performance_platform_data(self, insights_data: List[Dict[str, Any]]):
         """
         Thực hiện 'UPSERT' cho bảng fact_performance.
         Sử dụng phương pháp "Pre-loading Dimensions" để tối ưu hiệu suất.
         """
         if not insights_data:
-            logger.info("Không có dữ liệu performance để upsert.")
+            logger.info("Không có dữ liệu performance platform để upsert.")
             return
 
         session = self.SessionLocal()
@@ -702,9 +538,6 @@ class DatabaseManager:
                     'ad_id': record['ad_id'],
                     'platform_id': platform_map.get(record.get('publisher_platform')),
                     'placement_id': placement_map.get(record.get('platform_position')),
-                    'gender': record.get('gender', 'Unknown'),
-                    'age': record.get('age', 'Unknown'),
-                    'region': record.get('region', 'Unknown'),
                     'spend': float(record.get('spend', 0.0)),
                     'impressions': int(record.get('impressions', 0)),
                     'clicks': int(record.get('clicks', 0)),
@@ -723,13 +556,13 @@ class DatabaseManager:
                     prepared_data.append(fact_record)
 
             if not prepared_data:
-                logger.warning("Không có dữ liệu hợp lệ để chèn vào fact_performance sau khi chuẩn bị.")
+                logger.warning("Không có dữ liệu hợp lệ để chèn vào fact_performance_platform sau khi chuẩn bị.")
                 return
 
             # --- BƯỚC 3: Load hàng loạt vào Fact Table ---
-            stmt = pg_insert(FactPerformance).values(prepared_data)
+            stmt = pg_insert(FactPerformancePlatform).values(prepared_data)
             on_conflict_stmt = stmt.on_conflict_do_update(
-                constraint='_ad_performance_uc', # Sử dụng Unique Constraint đã định nghĩa
+                constraint='_ad_performance_platform_uc', # Sử dụng Unique Constraint đã định nghĩa
                 set_={
                     'spend': stmt.excluded.spend,
                     'impressions': stmt.excluded.impressions,
@@ -748,7 +581,7 @@ class DatabaseManager:
             
             session.execute(on_conflict_stmt)
             session.commit()
-            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_performance.")
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_performance_platform.")
 
         except Exception as e:
             logger.error(f"Lỗi khi Upsert Performance Data: {e}", exc_info=True)
@@ -756,6 +589,118 @@ class DatabaseManager:
             raise
         finally:
             session.close()
+
+    def upsert_performance_demographic_data(self, insights_data: List[Dict[str, Any]]):
+        """
+        Thực hiện 'UPSERT' cho bảng fact_performance_demographic.
+        Sử dụng phương pháp "Pre-loading Dimensions" để tối ưu hiệu suất.
+        """
+        if not insights_data:
+            logger.info("Không có dữ liệu performance demographic để upsert.")
+            return
+
+        session = self.SessionLocal()
+        try:
+            # --- BƯỚC 1: Tải trước các Dimension vào bộ nhớ ---
+            
+            # Lấy tất cả các giá trị duy nhất từ dữ liệu thô
+            all_dates = {rec['date_start'] for rec in insights_data if 'date_start' in rec}
+
+            # Lấy mapping từ DB hoặc tạo mới nếu chưa có
+            date_map = {str(r.full_date): r.date_key for r in session.query(DimDate.full_date, DimDate.date_key).filter(DimDate.full_date.in_([datetime.fromisoformat(d).date() for d in all_dates]))}
+
+            # --- BƯỚC 2: Chuẩn bị dữ liệu để load vào Fact Table ---
+            prepared_data = []
+            for record in insights_data:
+                # Bỏ qua các bản ghi không có các ID chính
+                if not all([record.get('date_start'), record.get('ad_id'), record.get('adset_id'), record.get('campaign_id')]):
+                    continue
+
+                # Bóc tách các giá trị từ 'actions' và 'action_values'
+                messages_started = 0
+                purchases = 0
+                purchase_value = 0.0
+                post_engagement = 0
+                link_click = 0
+
+                if 'actions' in record:
+                    for action in record.get('actions', []):
+                        action_type = action.get('action_type')
+                        value = int(action.get('value', 0))
+                        if action_type == 'onsite_conversion.messaging_conversation_started_7d':
+                            messages_started = value
+                        elif action_type == 'onsite_conversion.purchase':
+                            purchases = value
+                        elif action_type == 'post_engagement':
+                            post_engagement = value
+                        elif action_type == 'link_click':
+                            link_click = value
+                
+                if 'action_values' in record:
+                    for action in record.get('action_values', []):
+                        if action.get('action_type') == 'onsite_conversion.purchase':
+                            purchase_value = float(action.get('value', 0.0))
+
+                # Map dữ liệu thô với các khóa ngoại đã tra cứu
+                fact_record = {
+                    'date_key': date_map.get(record['date_start']),
+                    'campaign_id': record['campaign_id'],
+                    'adset_id': record['adset_id'],
+                    'ad_id': record['ad_id'],
+                    'gender': record.get('gender', 'Unknown'),
+                    'age': record.get('age', 'Unknown'),
+                    'spend': float(record.get('spend', 0.0)),
+                    'impressions': int(record.get('impressions', 0)),
+                    'clicks': int(record.get('clicks', 0)),
+                    'ctr': float(record.get('ctr', 0.0)),
+                    'cpm': float(record.get('cpm', 0.0)),
+                    'reach': int(record.get('reach', 0)),
+                    'frequency': float(record.get('frequency', 0.0)),
+                    'messages_started': messages_started,
+                    'purchases': purchases,
+                    'purchase_value': purchase_value,
+                    'post_engagement': post_engagement,
+                    'link_click': link_click
+                }
+                # Chỉ thêm vào danh sách nếu có date_key hợp lệ
+                if fact_record['date_key']:
+                    prepared_data.append(fact_record)
+
+            if not prepared_data:
+                logger.warning("Không có dữ liệu hợp lệ để chèn vào fact_performance_demographic sau khi chuẩn bị.")
+                return
+
+            # --- BƯỚC 3: Load hàng loạt vào Fact Table ---
+            stmt = pg_insert(FactPerformanceDemographic).values(prepared_data)
+            on_conflict_stmt = stmt.on_conflict_do_update(
+                constraint='_ad_performance_demographic_uc', # Sử dụng Unique Constraint đã định nghĩa
+                set_={
+                    'spend': stmt.excluded.spend,
+                    'impressions': stmt.excluded.impressions,
+                    'clicks': stmt.excluded.clicks,
+                    'ctr': stmt.excluded.ctr,
+                    'cpm': stmt.excluded.cpm,
+                    'reach': stmt.excluded.reach,
+                    'frequency': stmt.excluded.frequency,
+                    'messages_started': stmt.excluded.messages_started,
+                    'purchases': stmt.excluded.purchases,
+                    'purchase_value': stmt.excluded.purchase_value,
+                    'post_engagement': stmt.excluded.post_engagement,
+                    'link_click': stmt.excluded.link_click
+                }
+            )
+            
+            session.execute(on_conflict_stmt)
+            session.commit()
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_performance_demographic.")
+
+        except Exception as e:
+            logger.error(f"Lỗi khi Upsert Performance Data: {e}", exc_info=True)
+            session.rollback()
+            raise
+        finally:
+            session.close()
+        
     
     def refresh_data(self, start_date: str = None, end_date: str = None, date_preset: str = None):
         """
@@ -779,7 +724,8 @@ class DatabaseManager:
             all_campaigns = []
             all_adsets = []
             all_ads = []
-            all_insights = []
+            all_insights_platform = []
+            all_insights_demographic = []
 
             for account in accounts:
                 account_id = account['id']
@@ -815,10 +761,6 @@ class DatabaseManager:
             self.upsert_campaigns(all_campaigns)
             self.upsert_adsets(all_adsets)
             self.upsert_ads(all_ads)
-            # Enrich trạng thái
-            self._enrich_status_campaigns()
-            self._enrich_status_adsets()
-            self._enrich_status_ads()
             logger.info("=> Hoàn thành cập nhật Dimension.")
 
             # --- BƯỚC 2: LẤY VÀ CẬP NHẬT BẢNG FACT ---
@@ -831,29 +773,35 @@ class DatabaseManager:
                 logger.info("Lấy dữ liệu Insights cho khoảng thời gian mặc định...")
             for account in accounts:
                 account_id = account['id']
-                logger.info(f"Lấy Insights cho tài khoản: {account_id}")
-                insights = extractor.get_all_insights(
+                logger.info(f"Lấy Insights platform cho tài khoản: {account_id}")
+                insights_platform = extractor.get_all_insights_platform(
                     account_id=account_id,
                     date_preset=date_preset,
                     start_date=start_date,
                     end_date=end_date
                 )
-                if insights:
-                    all_insights.extend(insights)
+                if insights_platform:
+                    all_insights_platform.extend(insights_platform)
+                logger.info(f"Lấy Insights demographic cho tài khoản: {account_id}")
+                insights_demographic = extractor.get_all_insights_demo(
+                    account_id=account_id,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if insights_demographic:
+                    all_insights_demographic.extend(insights_demographic)
             
-            if not all_insights:
+            if not all_insights_platform and not all_insights_demographic:
                 logger.warning("Không có dữ liệu insights nào được trả về từ API. Kết thúc quy trình.")
                 return
 
-            logger.info(f"Tổng cộng có {len(all_insights)} bản ghi insights được lấy về.")
-            # Save vào json để debug
-            with open('debug_all_insights.json', 'w', encoding='utf-8') as f:
-                json.dump(all_insights, f, ensure_ascii=False, indent=3)
+            logger.info(f"Tổng cộng có {len(all_insights_platform) + len(all_insights_demographic)} bản ghi insights được lấy về.")
 
             # Cập nhật DimDate
             logger.info("Bước 4: Cập nhật bảng DimDate...")
-            min_date_str = min(rec['date_start'] for rec in all_insights)
-            max_date_str = max(rec['date_start'] for rec in all_insights)
+            min_date_str = min(rec['date_start'] for rec in all_insights_platform + all_insights_demographic)
+            max_date_str = max(rec['date_start'] for rec in all_insights_platform + all_insights_demographic)
             min_date = datetime.fromisoformat(min_date_str)
             max_date = datetime.fromisoformat(max_date_str)
             self.upsert_dates(min_date, max_date)
@@ -861,7 +809,8 @@ class DatabaseManager:
 
             # Cập nhật FactPerformance
             logger.info("Bước 5: Cập nhật bảng FactPerformance...")
-            self.upsert_performance_data(all_insights)
+            self.upsert_performance_platform_data(all_insights_platform)
+            self.upsert_performance_demographic_data(all_insights_demographic)
             logger.info("=> Hoàn thành cập nhật FactPerformance.")
 
         except Exception as e:
