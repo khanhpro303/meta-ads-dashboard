@@ -648,8 +648,8 @@ def main():
                 # Test xuất all insights
                 first_account_id = accounts[4]['id']
                 # Test xuất cho ngày 11-11-2025 thôi
-                start_date = '2025-11-11'
-                end_date = '2025-11-12'
+                start_date = '2025-09-01'
+                end_date = '2025-09-10'
                 date_preset = 'last_7d'
                 # Test lấy chiến dịch
                 campaigns = extractor.get_campaigns_for_account(account_id=first_account_id, start_date=start_date, end_date=end_date)    

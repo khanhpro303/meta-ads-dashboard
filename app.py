@@ -184,8 +184,8 @@ def get_campaigns():
     try:
         campaigns = session.query(DimCampaign.campaign_id, DimCampaign.name)\
             .filter(DimCampaign.ad_account_id == account_id)\
-            .filter(DimCampaign.date_start <= end_date)\
-            .filter(DimCampaign.date_stop >= start_date)\
+            .filter(DimCampaign.start_time <= end_date)\
+            .filter(DimCampaign.stop_time >= start_date)\
             .order_by(DimCampaign.name).all()
 
         campaigns_list = [{'campaign_id': c.campaign_id, 'name': c.name} for c in campaigns]
@@ -226,8 +226,8 @@ def get_adsets():
         # Lấy thông tin adset từ bảng DimAdset
         adset_query = select(DimAdset.adset_id, DimAdset.name)\
             .filter(DimAdset.campaign_id.in_(campaign_ids))\
-            .filter(DimAdset.date_start <= end_date)\
-            .filter(DimAdset.date_stop >= start_date)\
+            .filter(DimAdset.start_time <= end_date)\
+            .filter(DimAdset.stop_time >= start_date)\
             .order_by(DimAdset.name)
             
         adsets = session.execute(adset_query).all()
@@ -266,8 +266,8 @@ def get_ads():
     try:
         ad_query = select(DimAd.ad_id, DimAd.name)\
             .filter(DimAd.adset_id.in_(adset_ids))\
-            .filter(DimAd.date_start <= end_date)\
-            .filter(DimAd.date_stop >= start_date)\
+            .filter(DimAd.ad_schedule_start_time <= end_date)\
+            .filter(DimAd.ad_schedule_end_time >= start_date)\
             .order_by(DimAd.name)
 
         ads = session.execute(ad_query).all()
