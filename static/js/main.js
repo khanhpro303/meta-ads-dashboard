@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (sender === 'bot') {
                 messageWrapper.classList.add("flex", "justify-start"); // Căn trái
                 messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
-                // [CẢI TIẾN] Chuyển đổi ký tự xuống dòng (\n) thành thẻ <br> để hiển thị
+                // Chuyển đổi ký tự xuống dòng (\n) thành thẻ <br> để hiển thị
                 messageDiv.innerHTML = text.replace(/\n/g, '<br>');
             } else if (sender === 'loading') {
                 messageWrapper.classList.add("flex", "justify-start", "loading-indicator-wrapper"); // Căn trái
