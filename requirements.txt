@@ -63,4 +63,7 @@ SQLAlchemy==2.0.31
 dj-database-url==2.1.0
 celery==5.4.0
 redis==5.0.7
-orjson==3.11.4
+langchain
+langchain-google-genai
+langchain-community
+google-generativeai
