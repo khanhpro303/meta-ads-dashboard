@@ -29,7 +29,6 @@ class AIAgent:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-pro", 
             temperature=0, # =0 để AI trả lời dứt khoát, không sáng tạo
-            convert_system_message_to_human=True
         )
 
         # Kết nối LangChain với Database của bạn
