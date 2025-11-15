@@ -661,9 +661,9 @@ class FacebookAdsExtractor:
         return all_insights
     
     def get_total_metric(self, account_id: str, metric_name: str, 
-                         campaign_id: Optional[List[str]] = None, 
-                         adset_id: Optional[List[str]] = None, 
-                         ad_id: Optional[List[str]] = None, 
+                         campaign_ids: Optional[List[str]] = None, 
+                         adset_ids: Optional[List[str]] = None, 
+                         ad_ids: Optional[List[str]] = None, 
                          date_preset: Optional[str] = 'last_7d',
                          start_date: Optional[str] = None, 
                          end_date: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -689,18 +689,18 @@ class FacebookAdsExtractor:
         id_list_len = 0 # Dùng cho logging
 
         # Logic xác định level và filtering
-        if campaign_id:
+        if campaign_ids:
             level = 'campaign'
-            filtering_structure.append({'field': 'campaign.id', 'operator': 'IN', 'value': campaign_id})
-            id_list_len = len(campaign_id)
-        elif adset_id:
+            filtering_structure.append({'field': 'campaign.id', 'operator': 'IN', 'value': campaign_ids})
+            id_list_len = len(campaign_ids)
+        elif adset_ids:
             level = 'adset'
-            filtering_structure.append({'field': 'adset.id', 'operator': 'IN', 'value': adset_id})
-            id_list_len = len(adset_id)
-        elif ad_id:
+            filtering_structure.append({'field': 'adset.id', 'operator': 'IN', 'value': adset_ids})
+            id_list_len = len(adset_ids)
+        elif ad_ids:
             level = 'ad'
-            filtering_structure.append({'field': 'ad.id', 'operator': 'IN', 'value': ad_id})
-            id_list_len = len(ad_id)
+            filtering_structure.append({'field': 'ad.id', 'operator': 'IN', 'value': ad_ids})
+            id_list_len = len(ad_ids)
         
         params['level'] = level
         
