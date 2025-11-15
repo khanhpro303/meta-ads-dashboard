@@ -717,7 +717,9 @@ class FacebookAdsExtractor:
             params['date_preset'] = date_preset
             logger.info(f"{logger_msg} với khoảng '{date_preset}'...")
         elif start_date and end_date:
-            params['time_range'] = json.dumps({'since': start_date, 'until': end_date})
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            params['time_range'] = json.dumps({'since': start_date_str, 'until': end_date_str})
             logger.info(f"{logger_msg} từ {start_date} đến {end_date}...")
         else:
             logger.error("Cần cung cấp date_preset hoặc (start_date và end_date)")
