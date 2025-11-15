@@ -4,6 +4,7 @@
  * CẤU TRÚC KẾT HỢP:
  * - Sử dụng <select> đơn tiêu chuẩn (DOM) cho Account, Time.
  * - Sử dụng MultiselectDropdown.js cho multi-select (Campaigns, Adsets, Ads).
+ * - [MỚI] Bổ sung logic cho AI Chatbot.
  */
 
 // --- BIẾN TOÀN CỤC ---
@@ -19,14 +20,160 @@ let elChartMetric, elChartDimension;
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
     
+    // --- PHẦN 1: LOGIC DASHBOARD (ĐÃ CÓ) ---
     MultiselectDropdown(window.MultiselectDropdownOptions); 
-
     feather.replace();
     initializeCharts();
     initializeSelects(); 
     setupEventListeners();
     loadAccountDropdown();
-});
+    
+    // --- PHẦN 2: BỔ SUNG LOGIC CHO CHATBOT AI ---
+    console.log("Khởi tạo logic cho Chatbot AI...");
+
+    // === Khai báo biến ===
+    const chatBubble = document.getElementById("chat-bubble");
+    const chatWindow = document.getElementById("chat-window");
+    const minimizeBtn = document.getElementById("chat-minimize-btn");
+    const chatBody = document.getElementById("chat-body");
+    const input = document.getElementById("user-message-input");
+    const sendBtn = document.getElementById("send-message-btn");
+
+    // An toàn: Kiểm tra xem các element có tồn tại không
+    if (!chatBubble || !chatWindow || !minimizeBtn || !chatBody || !input || !sendBtn) {
+        console.warn("Không tìm thấy các thành phần UI của Chatbot. Chatbot sẽ không hoạt động.");
+        // Không return, để dashboard vẫn chạy
+    } else {
+        // === Logic Đóng/Mở Cửa sổ Chat ===
+        function openChatWindow() {
+            chatBubble.classList.add("opacity-0", "translate-y-8");
+            chatBubble.classList.add("hidden");
+            
+            chatWindow.classList.remove("hidden");
+            setTimeout(() => {
+                chatWindow.classList.remove("opacity-0", "translate-y-full");
+            }, 10); // Đợi 1 frame
+        }
+
+        function closeChatWindow() {
+            chatWindow.classList.add("opacity-0", "translate-y-full");
+            setTimeout(() => {
+                chatWindow.classList.add("hidden");
+                
+                chatBubble.classList.remove("hidden");
+                chatBubble.classList.remove("opacity-0", "translate-y-8");
+            }, 300); // Đợi transition hoàn thành
+        }
+
+        // Gán sự kiện
+        chatBubble.addEventListener("click", openChatWindow);
+        minimizeBtn.addEventListener("click", closeChatWindow);
+
+        // === Logic Gửi Tin Nhắn ===
+
+        /**
+         * Thêm tin nhắn vào cửa sổ chat
+         * @param {string | null} text - Nội dung tin nhắn. Nếu là null, sẽ hiển thị "đang gõ".
+         * @param {'user' | 'bot' | 'loading'} sender - Người gửi
+         */
+        function addMessage(text, sender) {
+            const messageWrapper = document.createElement("div");
+            const messageDiv = document.createElement("div");
+
+            // Thêm class Tailwind dựa trên người gửi
+            if (sender === 'user') {
+                messageWrapper.classList.add("flex", "justify-end"); // Căn phải
+                messageDiv.classList.add("bg-blue-600", "text-white", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                messageDiv.textContent = text;
+            } else if (sender === 'bot') {
+                messageWrapper.classList.add("flex", "justify-start"); // Căn trái
+                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                // [CẢI TIẾN] Chuyển đổi ký tự xuống dòng (\n) thành thẻ <br> để hiển thị
+                messageDiv.innerHTML = text.replace(/\n/g, '<br>');
+            } else if (sender === 'loading') {
+                messageWrapper.classList.add("flex", "justify-start", "loading-indicator-wrapper"); // Căn trái
+                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                messageDiv.innerHTML = `
+                    <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                `;
+            }
+
+            messageWrapper.appendChild(messageDiv);
+            chatBody.appendChild(messageWrapper);
+            
+            // Tự động cuộn xuống tin nhắn mới nhất
+            chatBody.scrollTop = chatBody.scrollHeight;
+            return messageWrapper; // Trả về để có thể xóa (nếu là loading)
+        }
+
+        /**
+         * Xóa chỉ báo "đang gõ"
+         */
+        function removeLoadingIndicator() {
+            const loadingIndicator = chatBody.querySelector(".loading-indicator-wrapper");
+            if (loadingIndicator) {
+                chatBody.removeChild(loadingIndicator);
+            }
+        }
+
+        /**
+         * Gửi tin nhắn đến server và nhận phản hồi
+         */
+        async function sendMessageToServer() {
+            const messageText = input.value.trim();
+            if (messageText === "") return;
+
+            // 1. Hiển thị tin nhắn của người dùng
+            addMessage(messageText, "user");
+            input.value = ""; // Xóa input
+
+            // 2. Hiển thị chỉ báo "đang gõ"
+            addMessage(null, "loading");
+
+            try {
+                // 3. Gửi yêu cầu đến API
+                const response = await fetch("/api/chat", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ message: messageText }),
+                });
+
+                // 4. Xóa chỉ báo "đang gõ"
+                removeLoadingIndicator();
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Lỗi server: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // 5. Hiển thị câu trả lời của AI
+                addMessage(data.response, "bot");
+
+            } catch (error) {
+                console.error("Lỗi khi chat:", error);
+                // 6. Xóa "đang gõ" và hiển thị lỗi
+                removeLoadingIndicator();
+                addMessage(`Xin lỗi, đã xảy ra lỗi: ${error.message}`, "bot");
+            }
+        }
+
+        // Gán sự kiện gửi
+        sendBtn.addEventListener("click", sendMessageToServer);
+        input.addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault(); // Ngăn xuống dòng
+                sendMessageToServer();
+            }
+        });
+    } // Kết thúc khối if (kiểm tra chatbot UI)
+
+}); // <-- **KẾT THÚC** document.addEventListener('DOMContentLoaded')
 
 // --- KHỞI TẠO GIAO DIỆN ---
 
@@ -61,6 +208,7 @@ function initializeCharts() {
 }
 
 function initializeSelects() {
+    // (Giữ nguyên)
     // 1. Dropdown Tài khoản
     elAccount = document.getElementById('filter-ad-account');
 
@@ -99,6 +247,7 @@ function initializeSelects() {
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
 
 function setupEventListeners() {
+    // (Giữ nguyên)
     // Nút
     document.getElementById('btn-refresh-data').addEventListener('click', handleRefreshData);
     document.getElementById('btn-apply-filters').addEventListener('click', handleApplyFilters);
@@ -199,6 +348,7 @@ async function handleRefreshData() {
 }
 
 async function handleApplyFilters() {
+    // (Giữ nguyên)
     const button = document.getElementById('btn-apply-filters');
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
@@ -293,6 +443,7 @@ async function handleApplyFilters() {
  * (Được gọi khi thay đổi metric hoặc dimension)
  */
 async function handlePieChartUpdate() {
+    // (Giữ nguyên)
     console.log("Đang cập nhật biểu đồ tròn...");
     
     // 1. Lấy payload (bao gồm filter chung + filter riêng của pie)
@@ -339,6 +490,7 @@ async function handlePieChartUpdate() {
 // --- CÁC HÀM TẢI DROPDOWN ---
 
 async function loadAccountDropdown() {
+    // (Giữ nguyên)
     setDropdownLoading(elAccount, 'Đang tải tài khoản...');
     
     try {
@@ -462,7 +614,7 @@ async function loadAdDropdown(adsetIds) {
 // --- CÁC HÀM RENDER DỮ LIỆU ---
 
 function renderOverviewData(data) {
-    // (Giữ nguyên các hàm format)
+    // (Giữ nguyên)
     const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(Math.round(num || 0));
     const formatCurrency = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.round(num || 0));
     const formatPercent = (num) => `${parseFloat(num || 0).toFixed(2)}%`;
@@ -600,6 +752,7 @@ function renderChartData(chartData) {
  * @param {string} title - Tiêu đề động cho biểu đồ
  */
 function renderPieChartData(pieChartData, title = 'Breakdown') {
+    // (Giữ nguyên)
     if (platformChartInstance) {
         // Kiểm tra xem có dữ liệu hay không
         if (pieChartData && pieChartData.labels && pieChartData.labels.length > 0) {
@@ -665,6 +818,7 @@ function getFilterPayload() {
  * [MỚI] Hàm helper để lấy payload đầy đủ cho biểu đồ tròn
  */
 function getPieChartPayload() {
+    // (Giữ nguyên)
     // 1. Lấy các filter cơ bản (ngày, tài khoản, campaign...)
     const baseFilters = getFilterPayload();
     if (!baseFilters) {
@@ -731,7 +885,7 @@ function resetDropdown(instance) {
 }
 
 function setDropdownLoading(instance, loadingText) {
-    // (Giữ nguyên)
+    // (GiGữ nguyên)
     if (!instance) return;
     if (instance.loadOptions) {
         instance.innerHTML = '';
@@ -754,7 +908,7 @@ function setButtonLoading(button, loadingText) {
 }
 
 function setButtonIdle(button, originalText) {
-    // (GiGit nguyên)
+    // (Giữ nguyên)
     button.disabled = false;
     const span = button.querySelector('span');
     if (span) span.innerText = originalText;
@@ -803,6 +957,7 @@ function triggerCampaignLoad() {
  * @param {string} status - Trạng thái (ví dụ: 'ACTIVE', 'PAUSED')
  */
 function getStatusBadge(status) {
+    // (Giữ nguyên)
     status = status ? status.toUpperCase() : 'UNKNOWN';
     
     switch (status) {
@@ -825,6 +980,7 @@ function getStatusBadge(status) {
  * @param {string} errorMsg - Thông báo lỗi (tùy chọn)
  */
 function renderTableData(data, errorMsg = null) {
+    // (Giữ nguyên)
     const tableBody = document.getElementById('campaign-table-body');
     if (!tableBody) return;
 
