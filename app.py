@@ -282,95 +282,229 @@ def get_ads():
 @app.route('/api/overview_data', methods=['POST'])
 def get_overview_data():
     """
-    Tổng hợp dữ liệu scorecard và dữ liệu chi tiết bằng cách truy vấn trực tiếp từ DB.
+    Tổng hợp dữ liệu scorecard.
+    - Lấy các metric CÓ THỂ CỘNG (spend, clicks, impressions) từ DB.
+    - Lấy metric KHÔNG THỂ CỘNG (reach) bằng cách gọi API live.
+    - Tính toán CTR (clicks/impressions) và so sánh kỳ trước.
     """
     session = db_manager.SessionLocal()
+    from fbads_extract import FacebookAdsExtractor # Import để lấy hàm live extract metrics
+    extractor = FacebookAdsExtractor()
+    
+    # Cấu trúc rỗng trả về nếu có lỗi hoặc không có dữ liệu
+    empty_scorecards = {
+        'total_spend': 0, 'total_impressions': 0, 'ctr': 0, 'total_purchases': 0,
+        'total_clicks': 0, 'avg_cpm': 0, 'avg_frequency': 0, 'total_messages': 0,
+        'total_reach': 0, 'total_post_engagement': 0, 'total_link_click': 0, 
+        'total_purchase_value': 0, 'avg_ctr': 0, # Thêm avg_ctr (tính từ db)
+        'total_spend_previous': None, 'total_spend_absolute': None, 'total_spend_growth': None,
+        'total_impressions_previous': None, 'total_impressions_absolute': None, 'total_impressions_growth': None,
+        'ctr_previous': None, 'ctr_absolute': None, 'ctr_growth': None,
+        'total_purchases_previous': None, 'total_purchases_absolute': None, 'total_purchases_growth': None,
+        'total_reach_previous': None, 'total_reach_absolute': None, 'total_reach_growth': None,
+    }
+
     try:
         data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC ===
+        account_id = data.get('account_id')
+        if not account_id:
+            logger.error("get_overview_data thiếu account_id. Sẽ không thể lấy 'reach' live.")
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        campaign_ids = data.get('campaign_ids')
+        adset_ids = data.get('adset_ids')
+        ad_ids = data.get('ad_ids')
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
-        # Logic xử lý date_preset
+        
+        # === 2. XÁC ĐỊNH KỲ HIỆN TẠI ===
         start_date, end_date = None, None
         if date_preset and date_preset in DATE_PRESET:
             start_date, end_date = _calculate_date_range(date_preset=date_preset, today=datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date())
         elif start_date_input and end_date_input:
-            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date() if start_date_input else None
-            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else None
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
         else:
             end_date = datetime.today().date()
             start_date = end_date.replace(day=1)
 
-        # --- Xây dựng câu truy vấn động dựa trên bộ lọc ---
-        query = select(
-            func.sum(FactPerformancePlatform.spend).label('total_spend'),
-            func.sum(FactPerformancePlatform.impressions).label('total_impressions'),
-            func.sum(FactPerformancePlatform.clicks).label('total_clicks'),
-            func.avg(FactPerformancePlatform.ctr).label('avg_ctr'),
-            func.avg(FactPerformancePlatform.cpm).label('avg_cpm'),
-            func.avg(FactPerformancePlatform.frequency).label('avg_frequency'),
-            func.sum(FactPerformancePlatform.reach).label('total_reach'),
-            func.sum(FactPerformancePlatform.messages_started).label('total_messages'),
-            func.sum(FactPerformancePlatform.purchases).label('total_purchases'),
-            func.sum(FactPerformancePlatform.purchase_value).label('total_purchase_value'),
-            func.sum(FactPerformancePlatform.post_engagement).label('total_post_engagement'),
-            func.sum(FactPerformancePlatform.link_click).label('total_link_click')
-        ).join(DimDate, FactPerformancePlatform.date_key == DimDate.date_key)
+        # === 3. HÀM HELPER ĐỂ TRUY VẤN DỮ LIỆU (TỪ DATABASE) ===
+        def _get_period_data_from_db(period_start, period_end):
+            """Hàm nội bộ để lấy dữ liệu TÍNH TỔNG ĐƯỢC từ DB."""
+            
+            query = select(
+                func.sum(FactPerformancePlatform.spend).label('total_spend'),
+                func.sum(FactPerformancePlatform.impressions).label('total_impressions'),
+                func.sum(FactPerformancePlatform.clicks).label('total_clicks'),
+                func.avg(FactPerformancePlatform.ctr).label('avg_ctr'), # Đây là CTR trung bình (tính từ db)
+                func.avg(FactPerformancePlatform.cpm).label('avg_cpm'),
+                func.avg(FactPerformancePlatform.frequency).label('avg_frequency'),
+                func.sum(FactPerformancePlatform.messages_started).label('total_messages'),
+                func.sum(FactPerformancePlatform.purchases).label('total_purchases'),
+                func.sum(FactPerformancePlatform.purchase_value).label('total_purchase_value'),
+                func.sum(FactPerformancePlatform.post_engagement).label('total_post_engagement'),
+                func.sum(FactPerformancePlatform.link_click).label('total_link_click')
+            ).join(DimDate, FactPerformancePlatform.date_key == DimDate.date_key)
 
-        # Áp dụng bộ lọc thời gian
-        if start_date and end_date:
-            query = query.filter(DimDate.full_date.between(start_date, end_date))
+            if period_start and period_end:
+                query = query.filter(DimDate.full_date.between(period_start, period_end))
+            
+            filters = []
+            if campaign_ids:
+                filters.append(FactPerformancePlatform.campaign_id.in_(campaign_ids))
+            if adset_ids:
+                filters.append(FactPerformancePlatform.adset_id.in_(adset_ids))
+            if ad_ids:
+                filters.append(FactPerformancePlatform.ad_id.in_(ad_ids))
+            
+            if filters:
+                query = query.where(and_(*filters))
 
-        # Áp dụng các bộ lọc ID
-        filters = []
-        if data.get('campaign_ids'):
-            filters.append(FactPerformancePlatform.campaign_id.in_(data['campaign_ids']))
-        if data.get('adset_ids'):
-            filters.append(FactPerformancePlatform.adset_id.in_(data['adset_ids']))
-        if data.get('ad_ids'):
-            filters.append(FactPerformancePlatform.ad_id.in_(data['ad_ids']))
+            return session.execute(query).first()
+
+        # === 4. TRUY VẤN DỮ LIỆU KỲ HIỆN TẠI (TỪ DB) ===
+        current_results_db = _get_period_data_from_db(start_date, end_date)
+
+        if not current_results_db or current_results_db.total_impressions is None:
+            return jsonify({'scorecards': empty_scorecards})
+
+        # === 5. XÁC ĐỊNH KỲ TRƯỚC ===
+        previous_results_db = None
+        prev_start_date, prev_end_date = None, None
         
-        if filters:
-            query = query.where(and_(*filters))
+        if start_date and end_date:
+            try:
+                duration_days = (end_date - start_date).days + 1
+                prev_end_date = start_date - relativedelta(days=1)
+                prev_start_date = prev_end_date - relativedelta(days=duration_days - 1)
+                
+                # Truy vấn dữ liệu kỳ trước (từ DB)
+                previous_results_db = _get_period_data_from_db(prev_start_date, prev_end_date)
+            except Exception as e:
+                logger.warning(f"Không thể tính toán hoặc truy vấn kỳ trước: {e}")
+                previous_results_db = None
 
-        # Thực thi câu truy vấn
-        result = session.execute(query).first()
+        # === 6. TÍNH TOÁN METRIC (CTR) VÀ GỌI API (REACH) ===
 
-        if not result or result.total_impressions is None:
-            # Trả về cấu trúc rỗng nếu không có kết quả
-            return jsonify({
-                'scorecards': {
-                    'total_spend': 0, 'total_impressions': 0, 'total_clicks': 0,
-                    'avg_ctr': 0, 'avg_cpm': 0, 'avg_frequency': 0,
-                    'total_messages': 0, 'total_reach': 0, 'total_post_engagement': 0,
-                    'total_link_click': 0, 'total_purchases': 0, 'total_purchase_value': 0
-                }
-            })
+        # Hàm helper
+        def calculate_growth(current, previous):
+            current_val = float(current or 0)
+            previous_val = float(previous or 0)
+            if previous_val == 0: return None
+            return (current_val - previous_val) / previous_val
 
-        # Tạo cấu trúc dữ liệu trả về
-        response_data = {
-            'scorecards': {
-                'total_spend': result.total_spend or 0,
-                'total_impressions': result.total_impressions or 0,
-                'ctr': result.avg_ctr or 0,
-                'total_clicks': result.total_clicks or 0,
-                'avg_cpm': result.avg_cpm or 0,
-                'avg_frequency': result.avg_frequency or 0,
-                'total_messages': result.total_messages or 0,
-                'total_reach': result.total_reach or 0,
-                'total_post_engagement': result.total_post_engagement or 0,
-                'total_link_click': result.total_link_click or 0,
-                'total_purchases': result.total_purchases or 0,
-                'total_purchase_value': result.total_purchase_value or 0
-            }
-            # Bạn có thể thêm một câu truy vấn khác ở đây để lấy 'raw_data' nếu cần
+        def calculate_absolute(current, previous, previous_exists):
+            if not previous_exists: return None
+            current_val = float(current or 0)
+            previous_val = float(previous or 0)
+            return current_val - previous_val
+
+        # --- Kỳ hiện tại ---
+        current_spend = current_results_db.total_spend or 0
+        current_impressions = current_results_db.total_impressions or 0
+        current_clicks = current_results_db.total_clicks or 0
+        current_purchases = current_results_db.total_purchases or 0
+        
+        # TÍNH TOÁN CTR THỰC TẾ (Kỳ hiện tại)
+        current_ctr_true = (current_clicks / current_impressions) * 100 if current_impressions else 0
+        
+        # GỌI API LẤY REACH (Kỳ hiện tại)
+        current_reach = 0.0
+        if account_id:
+            current_reach = extractor.get_total_metric(
+                account_id=account_id,
+                metric_name='reach',
+                campaign_ids=campaign_ids,
+                adset_ids=adset_ids,
+                ad_ids=ad_ids,
+                date_preset=date_preset if not (start_date and end_date) else None,
+                start_date=start_date,
+                end_date=end_date
+            )
+        else:
+            logger.warning("Không có account_id, current_reach được đặt là 0")
+
+        # --- Kỳ trước ---
+        previous_exists = previous_results_db is not None
+        
+        prev_spend = (previous_results_db.total_spend or 0) if previous_exists else 0
+        prev_impressions = (previous_results_db.total_impressions or 0) if previous_exists else 0
+        prev_clicks = (previous_results_db.total_clicks or 0) if previous_exists else 0
+        prev_purchases = (previous_results_db.total_purchases or 0) if previous_exists else 0
+
+        # TÍNH TOÁN CTR THỰC TẾ (Kỳ trước)
+        prev_ctr_true = (prev_clicks / prev_impressions) * 100 if prev_impressions else 0
+
+        # GỌI API LẤY REACH (Kỳ trước)
+        prev_reach = 0.0
+        if account_id and previous_exists:
+            prev_reach = extractor.get_total_metric(
+                account_id=account_id,
+                metric_name='reach',
+                campaign_ids=campaign_ids,
+                adset_ids=adset_ids,
+                ad_ids=ad_ids,
+                date_preset=None, # Luôn dùng ngày tuyệt đối cho kỳ trước
+                start_date=prev_start_date,
+                end_date=prev_end_date
+            )
+        elif previous_exists:
+            logger.warning("Không có account_id, prev_reach được đặt là 0")
+
+        # === 7. TẠO SCORECARDS ===
+        scorecards = {
+            # Chỉ số chính kỳ hiện tại
+            'total_spend': current_spend,
+            'total_impressions': current_impressions,
+            'ctr': current_ctr_true, # <-- CTR đúng tính thủ công
+            'total_purchases': current_purchases,
+            'total_reach': current_reach,
+
+            # Các chỉ số phụ kỳ hiện tại
+            'total_clicks': current_clicks,
+            'avg_cpm': current_results_db.avg_cpm or 0,
+            'avg_frequency': current_results_db.avg_frequency or 0,
+            'total_messages': current_results_db.total_messages or 0,
+            'total_post_engagement': current_results_db.total_post_engagement or 0,
+            'total_link_click': current_results_db.total_link_click or 0,
+            'total_purchase_value': current_results_db.total_purchase_value or 0,
+            'avg_ctr': current_results_db.avg_ctr or 0, # <-- CTR TRUNG BÌNH (tính bằng db)
+
+            # 1. Chi phí (Spend)
+            'total_spend_previous': prev_spend if previous_exists else None,
+            'total_spend_absolute': calculate_absolute(current_spend, prev_spend, previous_exists),
+            'total_spend_growth': calculate_growth(current_spend, prev_spend),
+
+            # 2. Hiển thị (Impressions)
+            'total_impressions_previous': prev_impressions if previous_exists else None,
+            'total_impressions_absolute': calculate_absolute(current_impressions, prev_impressions, previous_exists),
+            'total_impressions_growth': calculate_growth(current_impressions, prev_impressions),
+            
+            # 3. CTR (Đã sửa)
+            'ctr_previous': prev_ctr_true if previous_exists else None,
+            'ctr_absolute': calculate_absolute(current_ctr_true, prev_ctr_true, previous_exists),
+            'ctr_growth': calculate_growth(current_ctr_true, prev_ctr_true),
+
+            # 4. Lượt mua (Purchases)
+            'total_purchases_previous': prev_purchases if previous_exists else None,
+            'total_purchases_absolute': calculate_absolute(current_purchases, prev_purchases, previous_exists),
+            'total_purchases_growth': calculate_growth(current_purchases, prev_purchases),
+            
+            # 5. Reach (Đã sửa)
+            'total_reach_previous': prev_reach if previous_exists else None,
+            'total_reach_absolute': calculate_absolute(current_reach, prev_reach, previous_exists),
+            'total_reach_growth': calculate_growth(current_reach, prev_reach)
         }
 
+        response_data = {'scorecards': scorecards}
         return jsonify(response_data)
 
     except Exception as e:
         logger.error(f"Lỗi khi lấy dữ liệu tổng quan từ DB: {e}", exc_info=True)
-        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+        return jsonify({'scorecards': empty_scorecards}), 500
     finally:
         session.close()
 

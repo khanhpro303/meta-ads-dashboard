@@ -278,11 +278,6 @@ async function handleApplyFilters() {
         const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
         renderPieChartData(pieChartData, `${metricText} theo ${dimText}`);
         renderTableData(tableData);
-        
-        const tableBody = document.getElementById('campaign-table-body');
-        if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="py-4 px-4 text-center text-gray-500">Đã tải xong dữ liệu tổng quan.</td></tr>`;
-        }
 
     } catch (error) {
         console.error('Lỗi khi áp dụng bộ lọc:', error);
@@ -467,18 +462,67 @@ async function loadAdDropdown(adsetIds) {
 // --- CÁC HÀM RENDER DỮ LIỆU ---
 
 function renderOverviewData(data) {
-    // (Giữ nguyên)
+    // (Giữ nguyên các hàm format)
     const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(Math.round(num || 0));
     const formatCurrency = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.round(num || 0));
     const formatPercent = (num) => `${parseFloat(num || 0).toFixed(2)}%`;
+
+    /**
+     * [MỚI] Hàm helper để tạo HTML cho chỉ số tăng trưởng/thay đổi
+     * @param {number | null | undefined} value - Giá trị (growth hoặc absolute)
+     * @param {'percent' | 'number' | 'currency' | 'percent_points'} type - Kiểu định dạng
+     */
+    const renderGrowthHtml = (value, type) => {
+        if (value === null || typeof value === 'undefined' || value === 0) {
+            return `<span>(n/a)</span>`;
+        }
+
+        const isPositive = value > 0;
+        const colorClass = isPositive ? 'text-green-600' : 'text-red-600';
+        const iconName = isPositive ? 'arrow-up' : 'arrow-down';
+
+        let formattedValue;
+        if (type === 'percent') {
+            // value = 0.15 -> 15.00%
+            formattedValue = `${Math.abs(value * 100).toFixed(1)}%`;
+        } else if (type === 'percent_points') {
+            // value = 0.5 (từ 1% lên 1.5%) -> 0.50 pp
+            formattedValue = `${Math.abs(value).toFixed(1)} pp`;
+        } else if (type === 'currency') {
+            formattedValue = formatCurrency(Math.abs(value));
+        } else { // 'number'
+            formattedValue = formatNumber(Math.abs(value));
+        }
+
+        // Trả về HTML, feather.replace() sẽ được gọi sau
+        return `<span class="${colorClass} flex items-center">
+                    <i data-feather="${iconName}" class="w-4 h-4 mr-1"></i>
+                    <span>${formattedValue}</span>
+                </span>`;
+    };
+
+    // Lấy DOM elements (Giữ nguyên)
     const kpiSpend = document.getElementById('kpi-total-spend');
     const kpiImpressions = document.getElementById('kpi-total-impressions');
     const kpiCtr = document.getElementById('kpi-avg-ctr');
     const kpiPurchases = document.getElementById('kpi-total-purchases');
+    
+    // Render (Giữ nguyên)
     if (kpiSpend) kpiSpend.innerText = formatCurrency(data.total_spend);
     if (kpiImpressions) kpiImpressions.innerText = formatNumber(data.total_impressions);
-    if (kpiCtr) kpiCtr.innerText = formatPercent(data.ctr);
+    
+    // [THAY ĐỔI] Sử dụng giá trị tính thủ công mới
+    if (kpiCtr) kpiCtr.innerText = formatPercent(data.ctr); 
+    
     if (kpiPurchases) kpiPurchases.innerText = formatNumber(data.total_purchases);
+
+    // [MỚI] Cập nhật 4 Scorecard - GROWTH (Percent)
+    document.getElementById('kpi-total-spend-growth').innerHTML = renderGrowthHtml(data.total_spend_growth, 'percent');
+    document.getElementById('kpi-total-impressions-growth').innerHTML = renderGrowthHtml(data.total_impressions_growth, 'percent');
+    document.getElementById('kpi-avg-ctr-growth').innerHTML = renderGrowthHtml(data.ctr_growth, 'percent');
+    document.getElementById('kpi-total-purchases-growth').innerHTML = renderGrowthHtml(data.total_purchases_growth, 'percent');
+    
+    // (Giữ nguyên phần Funnel)
     const elFunnelCost = document.getElementById('funnel-total-cost');
     if (elFunnelCost) elFunnelCost.innerText = formatCurrency(data.total_spend);
     const elFunnelImp = document.getElementById('funnel-impressions');
@@ -486,7 +530,7 @@ function renderOverviewData(data) {
     const elFunnelEng = document.getElementById('funnel-post-engagement');
     if (elFunnelEng) elFunnelEng.innerText = formatNumber(data.total_post_engagement);
     const elFunnelClicks = document.getElementById('funnel-clicks');
-    if (elFunnelClicks) elFunnelClicks.innerText = formatNumber(data.total_clicks);
+    if (elFunnelClicks) elFunnelClicks.innerText = formatNumber(data.total_clicks); // <-- Dùng data.total_clicks
     const elFunnelMsg = document.getElementById('funnel-messaging');
     if (elFunnelMsg) elFunnelMsg.innerText = formatNumber(data.total_messages);
     const elFunnelCpm = document.getElementById('funnel-cpm');
@@ -500,25 +544,44 @@ function renderOverviewData(data) {
     const cpmc = data.total_messages > 0 ? (data.total_spend / data.total_messages) : 0;
     const elFunnelCpmc = document.getElementById('funnel-cpmc');
     if (elFunnelCpmc) elFunnelCpmc.innerText = `Cost/Msg: ${formatCurrency(cpmc)}`;
+    
+    // 1. Nhóm hiển thị
     const elDetailImp = document.getElementById('kpi-detail-impressions');
-    if (elDetailImp) elDetailImp.innerText = formatNumber(data.total_impressions);
+    if (elDetailImp) elDetailImp.innerText = formatNumber(data.total_impressions); // <-- Dùng data.total_impressions
+    document.getElementById('kpi-detail-impressions-growth').innerHTML = renderGrowthHtml(data.total_impressions_absolute, 'number');
+
     const elDetailReach = document.getElementById('kpi-detail-reach');
     if (elDetailReach) elDetailReach.innerText = formatNumber(data.total_reach);
-    const elDetailCtr = document.getElementById('kpi-detail-ctr');
-    if (elDetailCtr) elDetailCtr.innerText = formatPercent(data.ctr);
+    document.getElementById('kpi-detail-reach-growth').innerHTML = renderGrowthHtml(data.total_reach_absolute, 'number');
+    
+    const elDetailCtr = document.getElementById('kpi-detail-ctr'); //
+    // [THAY ĐỔI] Sử dụng giá trị tính thủ công mới
+    if (elDetailCtr) elDetailCtr.innerText = formatPercent(data.ctr); 
+    document.getElementById('kpi-detail-ctr-growth').innerHTML = renderGrowthHtml(data.ctr_absolute, 'percent_points'); // Dùng 'pp' cho chênh lệch CTR
+
+    // 2. Nhóm chỉ số tương tác
     const elDetailEng = document.getElementById('kpi-detail-post-engagement');
     if (elDetailEng) elDetailEng.innerText = formatNumber(data.total_post_engagement);
+    document.getElementById('kpi-detail-post-engagement-growth').innerHTML = renderGrowthHtml(data.total_post_engagement_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+
     const elDetailLinkClick = document.getElementById('kpi-detail-link-click');
     if (elDetailLinkClick) elDetailLinkClick.innerText = formatNumber(data.total_link_click);
+    document.getElementById('kpi-detail-link-click-growth').innerHTML = renderGrowthHtml(data.total_link_click_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+
+    // 3. Nhóm tỉ lệ chuyển đổi
     const elDetailMsg = document.getElementById('kpi-detail-messages');
     if (elDetailMsg) elDetailMsg.innerText = formatNumber(data.total_messages);
+    document.getElementById('kpi-detail-messages-growth').innerHTML = renderGrowthHtml(data.total_messages_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+
     const elDetailPurch = document.getElementById('kpi-detail-purchases');
     if (elDetailPurch) elDetailPurch.innerText = formatNumber(data.total_purchases);
+    document.getElementById('kpi-detail-purchases-growth').innerHTML = renderGrowthHtml(data.total_purchases_absolute, 'number');
+
     const elDetailPurchVal = document.getElementById('kpi-detail-purchase-value');
     if (elDetailPurchVal) elDetailPurchVal.innerText = formatCurrency(data.total_purchase_value);
-    document.querySelectorAll('p[id$="-growth"]').forEach(el => {
-        if (el) el.innerHTML = '';
-    });
+    document.getElementById('kpi-detail-purchase-value-growth').innerHTML = renderGrowthHtml(data.total_purchase_value_absolute, 'currency'); // Sẽ là (n/a) nếu API không trả về
+    
+    feather.replace();
 }
 
 function renderChartData(chartData) {

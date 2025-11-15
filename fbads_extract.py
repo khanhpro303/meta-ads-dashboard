@@ -659,6 +659,100 @@ class FacebookAdsExtractor:
                 logger.error(f"Lỗi không xác định: {e}")
                 break
         return all_insights
+    
+    def get_total_metric(self, account_id: str, metric_name: str, 
+                         campaign_id: Optional[List[str]] = None, 
+                         adset_id: Optional[List[str]] = None, 
+                         ad_id: Optional[List[str]] = None, 
+                         date_preset: Optional[str] = 'last_7d',
+                         start_date: Optional[str] = None, 
+                         end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Lấy một metric tổng hợp (ví dụ: reach, spend) cho một cấp độ cụ thể 
+        mà KHÔNG CÓ breakdown hoặc time_increment.
+        
+        Vì có các metric không thể cộng dồn như 'reach'.
+        
+        Nếu truyền vào một danh sách ID (ví dụ 5 campaign_id), nhận lại một danh sách 5 kết quả, mỗi kết quả là tổng metric cho một campaign đó.
+        """
+        insights_data = []
+        url = f"{self.base_url}/{account_id}/insights"
+
+        params = {
+            'access_token': self.access_token,
+            'limit': 100,
+            'fields': metric_name,
+        }
+
+        filtering_structure = []
+        level = 'account'
+        id_list_len = 0 # Dùng cho logging
+
+        # Logic xác định level và filtering
+        if campaign_id:
+            level = 'campaign'
+            filtering_structure.append({'field': 'campaign.id', 'operator': 'IN', 'value': campaign_id})
+            id_list_len = len(campaign_id)
+        elif adset_id:
+            level = 'adset'
+            filtering_structure.append({'field': 'adset.id', 'operator': 'IN', 'value': adset_id})
+            id_list_len = len(adset_id)
+        elif ad_id:
+            level = 'ad'
+            filtering_structure.append({'field': 'ad.id', 'operator': 'IN', 'value': ad_id})
+            id_list_len = len(ad_id)
+        
+        params['level'] = level
+        
+        if filtering_structure:
+            params['filtering'] = json.dumps(filtering_structure)
+
+        # Log
+        logger_msg = f"Lấy metric tổng '{metric_name}' cho cấp {level}"
+        if filtering_structure:
+             logger_msg += f" (lọc {id_list_len} IDs)"
+
+        # Logic về thời gian
+        if date_preset and date_preset in DATE_PRESET:
+            params['date_preset'] = date_preset
+            logger.info(f"{logger_msg} với khoảng '{date_preset}'...")
+        elif start_date and end_date:
+            params['time_range'] = json.dumps({'since': start_date, 'until': end_date})
+            logger.info(f"{logger_msg} từ {start_date} đến {end_date}...")
+        else:
+            logger.error("Cần cung cấp date_preset hoặc (start_date và end_date)")
+            return insights_data # Trả về list rỗng
+
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                insights_page = data.get('data', [])
+                if not insights_page:
+                    logger.info("Không tìm thấy thêm dữ liệu insights nào.")
+                    break
+                    
+                insights_data.extend(insights_page)
+                logger.info(f"Đã lấy được {len(insights_page)} bản ghi metric (Tổng: {len(insights_data)}).")
+
+                # Xử lý phân trang (Pagination)
+                next_page_url = data.get('paging', {}).get('next')
+                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy metric '{metric_name}' (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+                
+        return insights_data
 
 def main():
     try:
