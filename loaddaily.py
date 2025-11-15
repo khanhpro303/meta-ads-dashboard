@@ -1,3 +1,7 @@
+# Đây là script Python để tự động nạp dữ liệu hàng ngày từ ngày 18-09-2025 đến 15-11-2025
+# Script sẽ lặp qua từng ngày trong khoảng thời gian đã định và gọi hàm refresh_data
+# từ DatabaseManager để nạp dữ liệu cho mỗi ngày.
+# Giữa mỗi lần nạp dữ liệu, script sẽ chờ một khoảng thời gian định sẵn để tránh quá tải hệ thống.
 import logging
 import time
 from datetime import date, timedelta
@@ -13,9 +17,9 @@ logging.basicConfig(
 
 # --- CẤU HÌNH ---
 # Ngày bắt đầu (bao gồm)
-START_DATE = date(2025, 9, 18)
+START_DATE = date(2025, 10, 11)
 # Ngày kết thúc (bao gồm)
-END_DATE = date(2025, 11, 15)
+END_DATE = date(2025, 10, 17)
 # Thời gian chờ (giây) giữa mỗi lần nạp dữ liệu
 WAIT_SECONDS = 10
 # ------------------

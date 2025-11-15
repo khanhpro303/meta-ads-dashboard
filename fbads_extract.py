@@ -188,12 +188,22 @@ class FacebookAdsExtractor:
         campaigns = []
         url = f"{self.base_url}/{account_id}/campaigns"
 
+        filtering_structure = [
+            {
+                'field': 'effective_status',
+                'operator': 'IN',
+                'value': ['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED']
+            }
+        ]
+        filtering_json_string = json.dumps(filtering_structure)
+
         if date_preset and date_preset in DATE_PRESET:
             params = {
                 'access_token': self.access_token,
                 'fields': 'account_id,id,name,created_time,objective,status,start_time,stop_time',
                 'limit': 100,
                 'date_preset': date_preset,
+                'filtering': filtering_json_string
             }
             logger.info(f"Lấy chiến dịch cho tài khoản {account_id} với khoảng '{date_preset}'...")
         else:
@@ -204,7 +214,8 @@ class FacebookAdsExtractor:
                 'time_range': json.dumps({
                     'since': start_date,
                     'until': end_date
-                })
+                }),
+                'filtering': filtering_json_string
             }
             logger.info(f"Lấy chiến dịch cho tài khoản {account_id} từ {start_date} đến {end_date}...")
         
@@ -253,6 +264,11 @@ class FacebookAdsExtractor:
                 'field': 'campaign.id',
                 'operator': 'IN',
                 'value': campaign_id
+            },
+            {
+                'field': 'effective_status',
+                'operator': 'IN',
+                'value': ['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED']
             }
         ]
         
@@ -327,6 +343,11 @@ class FacebookAdsExtractor:
                 'field': 'adset.id',
                 'operator': 'IN',
                 'value': adset_id
+            },
+            {
+                'field': 'effective_status',
+                'operator': 'IN',
+                'value': ['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED']
             }
         ]
         # Chuyển cấu trúc dữ liệu thành chuỗi JSON hợp lệ
