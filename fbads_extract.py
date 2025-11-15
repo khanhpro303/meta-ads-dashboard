@@ -9,7 +9,6 @@ from typing import Dict, List, Any, Optional
 import pytz
 import requests
 from dotenv import load_dotenv
-from database_manager import DatabaseManager
 
 
 logging.basicConfig(level=logging.INFO)
