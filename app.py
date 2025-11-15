@@ -11,6 +11,7 @@ from sqlalchemy import func, select, and_, case
 
 # Import các lớp từ database_manager
 from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, FactPerformanceDemographic
+from ai_agent import AIAgent
 
 DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
 # --- CẤU HÌNH CƠ BẢN ---
@@ -24,6 +25,13 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-meta-ads-secret-key')
 db_manager = DatabaseManager()
 # Tạo tất cả các bảng nếu chưa tồn tại
 db_manager.create_all_tables()
+# Khởi tạo AI Agent
+try:
+    ai_analyst = AIAgent()
+    logger.info("Khởi tạo AI Analyst thành công.")
+except Exception as e:
+    logger.error(f"KHÔNG THỂ KHỞI TẠO AI AGENT: {e}")
+    ai_analyst = None
 
 # ======================================================================
 # HELPER FUNCTION - XỬ LÝ DATE PRESET
@@ -922,6 +930,31 @@ def get_table_data():
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
     finally:
         session.close()
+
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    """
+    Nhận tin nhắn từ người dùng và trả về câu trả lời của AI.
+    """
+    if not ai_analyst:
+        return jsonify({'error': 'AI Agent chưa được khởi tạo đúng cách. Vui lòng kiểm tra GOOGLE_API_KEY.'}), 500
+        
+    data = request.get_json()
+    user_message = data.get('message')
+
+    if not user_message:
+        return jsonify({'error': 'Không có tin nhắn nào được gửi.'}), 400
+
+    try:
+        # Gửi câu hỏi cho AI Agent
+        ai_response = ai_analyst.ask(user_message)
+        
+        # Trả lời về cho front-end
+        return jsonify({'response': ai_response})
+    
+    except Exception as e:
+        logger.error(f"Lỗi tại endpoint /api/chat: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
