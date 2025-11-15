@@ -407,6 +407,10 @@ def get_overview_data():
         current_impressions = current_results_db.total_impressions or 0
         current_clicks = current_results_db.total_clicks or 0
         current_purchases = current_results_db.total_purchases or 0
+        current_post_engagement = current_results_db.total_post_engagement or 0
+        current_link_click = current_results_db.total_link_click or 0
+        current_messages = current_results_db.total_messages or 0
+        current_purchase_value = current_results_db.total_purchase_value or 0
         
         # TÍNH TOÁN CTR THỰC TẾ (Kỳ hiện tại)
         current_ctr_true = (current_clicks / current_impressions) * 100 if current_impressions else 0
@@ -424,6 +428,9 @@ def get_overview_data():
                 start_date=start_date,
                 end_date=end_date
             )
+            if current_reach:
+                metric_value_str = current_reach[0].get('reach', '0')
+                current_reach = float(metric_value_str)
         else:
             logger.warning("Không có account_id, current_reach được đặt là 0")
 
@@ -434,6 +441,10 @@ def get_overview_data():
         prev_impressions = (previous_results_db.total_impressions or 0) if previous_exists else 0
         prev_clicks = (previous_results_db.total_clicks or 0) if previous_exists else 0
         prev_purchases = (previous_results_db.total_purchases or 0) if previous_exists else 0
+        prev_post_engagement = (previous_results_db.total_post_engagement or 0) if previous_exists else 0
+        prev_link_click = (previous_results_db.total_link_click or 0) if previous_exists else 0
+        prev_messages = (previous_results_db.total_messages or 0) if previous_exists else 0
+        prev_purchase_value = (previous_results_db.total_purchase_value or 0) if previous_exists else 0
 
         # TÍNH TOÁN CTR THỰC TẾ (Kỳ trước)
         prev_ctr_true = (prev_clicks / prev_impressions) * 100 if prev_impressions else 0
@@ -451,6 +462,9 @@ def get_overview_data():
                 start_date=prev_start_date,
                 end_date=prev_end_date
             )
+            if prev_reach:
+                metric_value_str = prev_reach[0].get('reach', '0')
+                prev_reach = float(metric_value_str)
         elif previous_exists:
             logger.warning("Không có account_id, prev_reach được đặt là 0")
 
@@ -496,7 +510,27 @@ def get_overview_data():
             # 5. Reach (Đã sửa)
             'total_reach_previous': prev_reach if previous_exists else None,
             'total_reach_absolute': calculate_absolute(current_reach, prev_reach, previous_exists),
-            'total_reach_growth': calculate_growth(current_reach, prev_reach)
+            'total_reach_growth': calculate_growth(current_reach, prev_reach),
+
+            # 6. Lượt nhắn tin
+            'total_messages_previous': prev_messages if previous_exists else None,
+            'total_messages_absolute': calculate_absolute(current_messages, prev_messages, previous_exists),
+            'total_messages_growth': calculate_growth(current_messages, prev_messages),
+
+            # 7. Tương tác bài viết
+            'total_post_engagement_previous': prev_post_engagement if previous_exists else None,
+            'total_post_engagement_absolute': calculate_absolute(current_post_engagement, prev_post_engagement, previous_exists),
+            'total_post_engagement_growth': calculate_growth(current_post_engagement, prev_post_engagement),
+
+            # 8. Click vào links
+            'total_link_click_previous': prev_link_click if previous_exists else None,
+            'total_link_click_absolute': calculate_absolute(current_link_click, prev_link_click, previous_exists),
+            'total_link_click_growth': calculate_growth(current_link_click, prev_link_click),
+
+            # 9. Giá trị mua hàng
+            'total_purchase_value_previous': prev_purchase_value if previous_exists else None,
+            'total_purchase_value_absolute': calculate_absolute(current_purchase_value, prev_purchase_value, previous_exists),
+            'total_purchase_value_growth': calculate_growth(current_purchase_value, prev_purchase_value)
         }
 
         response_data = {'scorecards': scorecards}
