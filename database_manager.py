@@ -196,6 +196,68 @@ class FactPerformanceDemographic(Base):
 
     __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'gender', 'age', name='_ad_performance_demographic_uc'),)
 
+class DimFanpage(Base):
+    """
+    Bảng Dimension: Lưu trữ thông tin mô tả về Fanpage.
+    """
+    __tablename__ = 'dim_fanpage'
+    
+    page_id = Column(String, primary_key=True)
+    name = Column(String)
+    # Lưu Page Access Token để có thể refresh dữ liệu cho page này
+    page_access_token = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class FactPageMetricsDaily(Base):
+    """
+    Bảng Fact: Lưu trữ các chỉ số TỔNG HỢP của Page, chia theo ngày.
+    """
+    __tablename__ = 'fact_page_metrics_daily'
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    date_key = Column(Integer, ForeignKey('dim_date.date_key'), nullable=False)
+    page_id = Column(String, ForeignKey('dim_fanpage.page_id'), nullable=False)
+    
+    # Metrics từ hàm get_page_metrics_by_day
+    page_fans = Column(BigInteger, default=0) # Chỉ số lifetime lượt like của page (accumulative theo ngày)
+    page_impressions = Column(BigInteger, default=0)
+    page_post_engagements = Column(BigInteger, default=0)
+    page_video_views = Column(BigInteger, default=0)
+    page_impressions_unique = Column(BigInteger, default=0)
+    page_fan_removes = Column(BigInteger, default=0)
+    page_fan_adds_unique = Column(BigInteger, default=0) # Người like mới unique
+    
+    # Thêm Unique Constraint để thực hiện ON CONFLICT
+    __table_args__ = (UniqueConstraint('date_key', 'page_id', name='_page_metrics_daily_uc'),)
+
+class FactPostPerformance(Base):
+    """
+    Bảng Fact: Lưu trữ các chỉ số LIFETIME của từng Post.
+    """
+    __tablename__ = 'fact_post_performance'
+    
+    # Dùng post_id làm Primary Key
+    post_id = Column(String, primary_key=True)
+    page_id = Column(String, ForeignKey('dim_fanpage.page_id'), nullable=False)
+    
+    # Thông tin mô tả của Post
+    created_time = Column(DateTime, nullable=False) # Đây là "dấu ngày" bạn cần
+    post_type = Column(String, nullable=True)
+    message = Column(String, nullable=True)
+    full_picture_url = Column(String, nullable=True)
+    
+    # Các chỉ số Lifetime (LT)
+    shares_count = Column(Integer, default=0)
+    comments_total_count = Column(Integer, default=0)
+    lt_post_reactions_like_total = Column(BigInteger, default=0)
+    lt_post_impressions = Column(BigInteger, default=0)
+    lt_post_clicks = Column(BigInteger, default=0)
+    
+    # (Bạn có thể thêm các cột metric khác ở đây nếu cần)
+    
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
 # --- CLASS QUẢN LÝ DATABASE ---
 
 class DatabaseManager:
@@ -700,6 +762,184 @@ class DatabaseManager:
             raise
         finally:
             session.close()
+
+    def upsert_fanpages(self, fanpages_data: List[Dict[str, Any]]):
+        """
+        Thực hiện 'UPSERT' cho bảng dim_fanpage.
+        """
+        if not fanpages_data:
+            return
+
+        prepared_data = [
+            {
+                'page_id': page['id'], 
+                'name': page['name'],
+                'page_access_token': page['access_token'], # Rất quan trọng
+                'category': page.get('category')
+            } 
+            for page in fanpages_data if 'access_token' in page # Chỉ lưu page có token
+        ]
+
+        if not prepared_data:
+            logger.warning("Không có dữ liệu fanpage (với access token) để upsert.")
+            return
+
+        stmt = pg_insert(DimFanpage).values(prepared_data)
+        on_conflict_stmt = stmt.on_conflict_do_update(
+            index_elements=['page_id'],
+            set_={
+                'name': stmt.excluded.name,
+                'page_access_token': stmt.excluded.page_access_token,
+                'category': stmt.excluded.category,
+                'updated_at': datetime.now()
+            }
+        )
+        
+        session = self.SessionLocal()
+        try:
+            session.execute(on_conflict_stmt)
+            session.commit()
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} Fanpage vào dim_fanpage.")
+        except Exception as e:
+            logger.error(f"Lỗi khi Upsert Fanpages: {e}")
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def upsert_page_metrics_daily(self, metrics_data: List[Dict[str, Any]]):
+        """
+        Thực hiện 'UPSERT' cho bảng fact_page_metrics_daily.
+        Dữ liệu đầu vào đã được "pivot" (nhóm theo ngày).
+        """
+        if not metrics_data:
+            logger.info("Không có dữ liệu page metrics daily để upsert.")
+            return
+
+        session = self.SessionLocal()
+        try:
+            # 1. Tải trước DimDate
+            all_dates_str = {rec['date'] for rec in metrics_data if 'date' in rec}
+            if not all_dates_str:
+                logger.warning("Dữ liệu page metrics không có trường 'date'.")
+                return
+                
+            all_dates_obj = {datetime.strptime(d, '%Y-%m-%d').date() for d in all_dates_str}
+            date_map = {str(r.full_date): r.date_key for r in session.query(DimDate.full_date, DimDate.date_key).filter(DimDate.full_date.in_(all_dates_obj))}
+
+            # 2. Chuẩn bị dữ liệu
+            prepared_data = []
+            for record in metrics_data:
+                date_key = date_map.get(record.get('date'))
+                if not date_key:
+                    continue # Bỏ qua nếu ngày không có trong DimDate
+
+                prepared_data.append({
+                    'date_key': date_key,
+                    'page_id': record.get('page_id'),
+                    'page_fans': record.get('page_fans', 0),
+                    'page_impressions': record.get('page_impressions', 0),
+                    'page_post_engagements': record.get('page_post_engagements', 0),
+                    'page_video_views': record.get('page_video_views', 0),
+                    'page_impressions_unique': record.get('page_impressions_unique', 0),
+                    'page_fan_removes': record.get('page_fan_removes', 0),
+                    'page_fan_adds_unique': record.get('page_fan_adds_unique', 0)
+                })
+
+            if not prepared_data:
+                logger.warning("Không có dữ liệu page metrics hợp lệ sau khi map date_key.")
+                return
+
+            # 3. Load hàng loạt
+            stmt = pg_insert(FactPageMetricsDaily).values(prepared_data)
+            on_conflict_stmt = stmt.on_conflict_do_update(
+                constraint='_page_metrics_daily_uc', # Unique constraint
+                set_={
+                    'page_fans': stmt.excluded.page_fans,
+                    'page_impressions': stmt.excluded.page_impressions,
+                    'page_post_engagements': stmt.excluded.page_post_engagements,
+                    'page_video_views': stmt.excluded.page_video_views,
+                    'page_impressions_unique': stmt.excluded.page_impressions_unique,
+                    'page_fan_removes': stmt.excluded.page_fan_removes,
+                    'page_fan_adds_unique': stmt.excluded.page_fan_adds_unique,
+                }
+            )
+            
+            session.execute(on_conflict_stmt)
+            session.commit()
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_page_metrics_daily.")
+
+        except Exception as e:
+            logger.error(f"Lỗi khi Upsert Page Metrics Daily: {e}", exc_info=True)
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def upsert_post_performance(self, posts_data: List[Dict[str, Any]]):
+        """
+        Thực hiện 'UPSERT' cho bảng fact_post_performance (dữ liệu lifetime).
+        Dữ liệu đầu vào đã được "flat" (mỗi post 1 dòng).
+        """
+        if not posts_data:
+            logger.info("Không có dữ liệu post performance để upsert.")
+            return
+
+        prepared_data = []
+        for post in posts_data:
+            # Phân tích cú pháp created_time
+            created_time_dt = parse_datetime_flexible(post.get('created_time'))
+            if not created_time_dt:
+                logger.warning(f"Bỏ qua post {post.get('post_id')} do không có created_time hợp lệ.")
+                continue
+
+            prepared_data.append({
+                'post_id': post.get('post_id'),
+                'page_id': post.get('page_id'), # Phải được thêm vào ở hàm refresh
+                'created_time': created_time_dt,
+                'post_type': post.get('properties'),
+                'message': post.get('message'),
+                'full_picture_url': post.get('full_picture_url'),
+                'shares_count': post.get('shares_count', 0),
+                'comments_total_count': post.get('comments_total_count', 0),
+                'lt_post_reactions_like_total': post.get('post_reactions_like_total', 0),
+                'lt_post_impressions': post.get('post_impressions', 0),
+                'lt_post_clicks': post.get('post_clicks', 0),
+            })
+
+        if not prepared_data:
+            logger.warning("Không có dữ liệu post performance hợp lệ sau khi chuẩn bị.")
+            return
+
+        stmt = pg_insert(FactPostPerformance).values(prepared_data)
+        on_conflict_stmt = stmt.on_conflict_do_update(
+            index_elements=['post_id'],
+            set_={
+                'page_id': stmt.excluded.page_id,
+                'created_time': stmt.excluded.created_time,
+                'post_type': stmt.excluded.post_type,
+                'message': stmt.excluded.message,
+                'full_picture_url': stmt.excluded.full_picture_url,
+                'shares_count': stmt.excluded.shares_count,
+                'comments_total_count': stmt.excluded.comments_total_count,
+                'lt_post_reactions_like_total': stmt.excluded.lt_post_reactions_like_total,
+                'lt_post_impressions': stmt.excluded.lt_post_impressions,
+                'lt_post_clicks': stmt.excluded.lt_post_clicks,
+                'updated_at': datetime.now()
+            }
+        )
+        
+        session = self.SessionLocal()
+        try:
+            session.execute(on_conflict_stmt)
+            session.commit()
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_post_performance.")
+        except Exception as e:
+            logger.error(f"Lỗi khi Upsert Post Performance: {e}")
+            session.rollback()
+            raise
+        finally:
+            session.close()
         
     
     def refresh_data(self, start_date: str = None, end_date: str = None, date_preset: str = None):
@@ -816,4 +1056,111 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"LỖI NGHIÊM TRỌNG trong quá trình làm mới dữ liệu: {e}", exc_info=True)
             # Ném lại lỗi để endpoint có thể bắt và trả về thông báo lỗi
+            raise
+    
+    def refresh_data_fanpage(self, start_date: str, end_date: str):
+        """
+        Hàm chính để điều phối quy trình ETL cho Fanpage:
+        1. Lấy danh sách Fanpage.
+        2. Lấy Page Metrics (theo ngày).
+        3. Lấy Post Metrics (lifetime).
+        4. Cập nhật các bảng Dim và Fact.
+        
+        Args:
+            start_date (str): Ngày bắt đầu (YYYY-MM-DD).
+            end_date (str): Ngày kết thúc (YYYY-MM-DD).
+        """
+        from fbads_extract import FacebookAdsExtractor
+        extractor = FacebookAdsExtractor()
+        
+        logger.info("--- BẮT ĐẦU QUY TRÌNH REFRESH DỮ LIỆU FANPAGE ---")
+        
+        try:
+            # --- BƯỚC 1: LẤY VÀ CẬP NHẬT DIM_FANPAGE ---
+            logger.info("Bước 1: Lấy và cập nhật dim_fanpage...")
+            fanpages = extractor.get_all_fanpages()
+            self.upsert_fanpages(fanpages)
+            logger.info("=> Hoàn thành cập nhật dim_fanpage.")
+            
+            # --- BƯỚC 2: LẤY DỮ LIỆU TỪ API (CHO TẤT CẢ PAGES) ---
+            all_page_metrics = []
+            all_post_metrics = []
+
+            for page in fanpages:
+                page_id = page.get('id')
+                page_token = page.get('access_token')
+                page_name = page.get('name')
+                
+                if not page_token:
+                    logger.warning(f"Bỏ qua Page {page_name} ({page_id}) vì không có Page Access Token.")
+                    continue
+                
+                logger.info(f"--- Đang xử lý cho Fanpage: {page_name} ({page_id}) ---")
+                
+                # 2.1 Lấy Page Metrics (theo ngày)
+                logger.info(f"Lấy Page Metrics (daily) từ {start_date} đến {end_date}...")
+                page_metrics = extractor.get_page_metrics_by_day(
+                    page_id=page_id,
+                    page_access_token=page_token,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                all_page_metrics.extend(page_metrics)
+                
+                # 2.2 Lấy Post Metrics (lifetime, theo ngày post)
+                logger.info(f"Lấy Post Metrics (lifetime) cho các post tạo từ {start_date} đến {end_date}...")
+                post_metrics = extractor.get_posts_with_lifetime_insights(
+                    page_id=page_id,
+                    page_access_token=page_token,
+                    start_date=start_date,
+                    end_date=end_date,
+                    metrics_list=None # Dùng default metrics
+                )
+                
+                # Thêm page_id vào mỗi record post để load vào DB
+                for post in post_metrics:
+                    post['page_id'] = page_id
+                all_post_metrics.extend(post_metrics)
+
+            if not all_page_metrics and not all_post_metrics:
+                logger.warning("Không có dữ liệu Fanpage nào được trả về từ API. Kết thúc.")
+                return
+
+            logger.info(f"Tổng cộng có {len(all_page_metrics)} bản ghi Page Metrics và {len(all_post_metrics)} bản ghi Post Metrics.")
+            
+            # --- BƯỚC 3: CẬP NHẬT DIM_DATE ---
+            logger.info("Bước 3: Cập nhật bảng DimDate...")
+            
+            # Lấy tất cả các ngày từ cả hai nguồn dữ liệu
+            page_dates = {rec['date'] for rec in all_page_metrics if 'date' in rec}
+            post_dates = {rec['created_time'] for rec in all_post_metrics if 'created_time' in rec}
+            
+            all_dates_str = list(page_dates) + list(post_dates)
+            
+            if not all_dates_str:
+                 logger.warning("Không tìm thấy ngày tháng nào trong dữ liệu, bỏ qua cập nhật DimDate.")
+            else:
+                # Chuyển đổi tất cả sang datetime object
+                all_dates_obj = []
+                for d_str in all_dates_str:
+                    dt = parse_datetime_flexible(d_str)
+                    if dt:
+                        all_dates_obj.append(dt)
+                
+                if all_dates_obj:
+                    min_date = min(all_dates_obj)
+                    max_date = max(all_dates_obj)
+                    self.upsert_dates(min_date, max_date)
+                    logger.info(f"=> Hoàn thành cập nhật DimDate (Từ {min_date.date()} đến {max_date.date()}).")
+
+            # --- BƯỚC 4: CẬP NHẬT CÁC BẢNG FACT ---
+            logger.info("Bước 4: Cập nhật các bảng Fact (Page Metrics và Post Performance)...")
+            self.upsert_page_metrics_daily(all_page_metrics)
+            self.upsert_post_performance(all_post_metrics)
+            logger.info("=> Hoàn thành cập nhật các bảng Fact.")
+            
+            logger.info("--- QUY TRÌNH REFRESH DỮ LIỆU FANPAGE HOÀN TẤT ---")
+
+        except Exception as e:
+            logger.error(f"LỖI NGHIÊM TRỌNG trong quá trình làm mới dữ liệu Fanpage: {e}", exc_info=True)
             raise

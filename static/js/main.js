@@ -4,7 +4,8 @@
  * CẤU TRÚC KẾT HỢP:
  * - Sử dụng <select> đơn tiêu chuẩn (DOM) cho Account, Time.
  * - Sử dụng MultiselectDropdown.js cho multi-select (Campaigns, Adsets, Ads).
- * - [MỚI] Bổ sung logic cho AI Chatbot.
+ * - Bổ sung logic cho AI Chatbot.
+ * - [MỚI] Bổ sung logic chuyển đổi Panel (Tổng quan vs Fanpage).
  */
 
 // --- BIẾN TOÀN CỤC ---
@@ -14,7 +15,7 @@ let platformChartInstance = null;
 let elAccount, elTime;
 let elCampaigns, elAdsets, elAds;
 
-// [MỚI] Thêm biến cho 2 dropdown của biểu đồ tròn
+// Thêm biến cho 2 dropdown của biểu đồ tròn
 let elChartMetric, elChartDimension;
 
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
@@ -22,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- PHẦN 1: LOGIC DASHBOARD (ĐÃ CÓ) ---
     MultiselectDropdown(window.MultiselectDropdownOptions); 
-    feather.replace();
+    feather.replace(); // Chạy feather icons cho toàn bộ trang
     initializeCharts();
     initializeSelects(); 
     setupEventListeners();
@@ -173,6 +174,69 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     } // Kết thúc khối if (kiểm tra chatbot UI)
 
+    // --- PHẦN 3: LOGIC CHUYỂN PANEL (MỚI THÊM) ---
+    console.log("Khởi tạo logic chuyển panel...");
+    
+    // Khai báo biến cho panel
+    const navLinks = {
+        'nav-tong-quan': document.getElementById('nav-tong-quan'),
+        'nav-fanpage-overview': document.getElementById('nav-fanpage-overview')
+        // Thêm các nav link khác ở đây nếu cần
+    };
+
+    const panels = {
+        'panel-tong-quan': document.getElementById('panel-tong-quan'),
+        'panel-fanpage-overview': document.getElementById('panel-fanpage-overview')
+        // Thêm các panel khác ở đây nếu cần
+    };
+
+    const allNavLinks = document.querySelectorAll('.nav-link');
+
+    // Hàm để set link active
+    const setActiveLink = (clickedLink) => {
+        if (!clickedLink) return;
+        
+        allNavLinks.forEach(link => {
+            link.classList.remove('bg-gray-200', 'text-gray-700', 'font-medium');
+            link.classList.add('text-gray-600', 'hover:bg-gray-100');
+        });
+
+        clickedLink.classList.add('bg-gray-200', 'text-gray-700', 'font-medium');
+        clickedLink.classList.remove('text-gray-600', 'hover:bg-gray-100');
+    };
+
+    // Hàm để hiển thị panel
+    const showPanel = (panelId) => {
+        Object.values(panels).forEach(panel => {
+            if (panel) panel.classList.add('hidden');
+        });
+        if (panels[panelId]) {
+            panels[panelId].classList.remove('hidden');
+        }
+    };
+
+    // Gán sự kiện click cho "Tổng quan"
+    if (navLinks['nav-tong-quan']) {
+        navLinks['nav-tong-quan'].addEventListener('click', (e) => {
+            e.preventDefault();
+            setActiveLink(navLinks['nav-tong-quan']);
+            showPanel('panel-tong-quan');
+        });
+    }
+
+    // Gán sự kiện click cho "Fanpage overview"
+    if (navLinks['nav-fanpage-overview']) {
+        navLinks['nav-fanpage-overview'].addEventListener('click', (e) => {
+            e.preventDefault();
+            setActiveLink(navLinks['nav-fanpage-overview']);
+            showPanel('panel-fanpage-overview');
+        });
+    }
+
+    // Đặt trạng thái ban đầu khi tải trang (hiển thị panel 'Tổng quan')
+    showPanel('panel-tong-quan');
+
+
 }); // <-- **KẾT THÚC** document.addEventListener('DOMContentLoaded')
 
 // --- KHỞI TẠO GIAO DIỆN ---
@@ -205,6 +269,15 @@ function initializeCharts() {
             plugins: { legend: { position: 'bottom' }, title: { display: true, text: 'Vui lòng áp dụng bộ lọc' } }
         }
     });
+
+    // [MỚI] Khởi tạo biểu đồ cho Fanpage Overview (nếu element tồn tại)
+    const ctxFpMain = document.getElementById('fp-main-chart');
+    if (ctxFpMain) {
+        // Bạn có thể tạo một biến instance mới cho biểu đồ này nếu cần
+        // let fpMainChartInstance = new Chart(ctxFpMain.getContext('2d'), { ... });
+        // Tạm thời chỉ log
+        console.log("Đã tìm thấy canvas 'fp-main-chart' và sẵn sàng khởi tạo.");
+    }
 }
 
 function initializeSelects() {
@@ -220,28 +293,35 @@ function initializeSelects() {
     elAdsets = document.getElementById('filter-adsets');
     elAds = document.getElementById('filter-ads');
 
-    // [MỚI] Lấy DOM elements cho 2 dropdown của biểu đồ tròn
+    // Lấy DOM elements cho 2 dropdown của biểu đồ tròn
     elChartMetric = document.getElementById('chart-metric');
     elChartDimension = document.getElementById('chart-dimension');
 
-    // [MỚI] Set giá trị mặc định (bạn có thể đổi ở đây)
-    elChartMetric.value = 'purchases';
-    elChartDimension.value = 'placement';
+    // Set giá trị mặc định (bạn có thể đổi ở đây)
+    // [EDIT] Kiểm tra null trước khi gán
+    if (elChartMetric) elChartMetric.value = 'purchases';
+    if (elChartDimension) elChartDimension.value = 'placement';
+
 
     // Vô hiệu hóa tất cả dropdown con ban đầu
-    elAccount.disabled = true;
-    elTime.disabled = true;
-    elCampaigns.disabled = true;
-    elAdsets.disabled = true;
-    elAds.disabled = true;
+    if (elAccount) elAccount.disabled = true;
+    if (elTime) elTime.disabled = true;
+    if (elCampaigns) {
+        elCampaigns.disabled = true;
+        elCampaigns.loadOptions();
+    }
+    if (elAdsets) {
+        elAdsets.disabled = true;
+        elAdsets.loadOptions();
+    }
+    if (elAds) {
+        elAds.disabled = true;
+        elAds.loadOptions();
+    }
     
-    // [MỚI] Vô hiệu hóa cả dropdown của biểu đồ
-    elChartMetric.disabled = true;
-    elChartDimension.disabled = true;
-    
-    elCampaigns.loadOptions();
-    elAdsets.loadOptions();
-    elAds.loadOptions();
+    // Vô hiệu hóa cả dropdown của biểu đồ
+    if (elChartMetric) elChartMetric.disabled = true;
+    if (elChartDimension) elChartDimension.disabled = true;
 }
 
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
@@ -304,10 +384,10 @@ function setupEventListeners() {
         // Không cần làm gì
     });
 
-    // [MỚI] Thêm sự kiện cho 2 dropdown của biểu đồ tròn
-    // Khi thay đổi, gọi hàm handlePieChartUpdate
-    elChartMetric.addEventListener('change', handlePieChartUpdate);
-    elChartDimension.addEventListener('change', handlePieChartUpdate);
+    // Thêm sự kiện cho 2 dropdown của biểu đồ tròn
+    // [EDIT] Kiểm tra null
+    if (elChartMetric) elChartMetric.addEventListener('change', handlePieChartUpdate);
+    if (elChartDimension) elChartDimension.addEventListener('change', handlePieChartUpdate);
 }
 
 // --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
@@ -353,45 +433,40 @@ async function handleApplyFilters() {
     const originalText = button.querySelector('span').innerText;
     setButtonLoading(button, 'Đang tải...');
 
-    // [THAY ĐỔI] Lấy payload của biểu đồ tròn một cách linh động
     const pieChartFilters = getPieChartPayload();
     
-    // getPieChartPayload đã bao gồm cả getFilterPayload
-    // nên nếu nó null, nghĩa là filter cơ bản đã lỗi.
     if (!pieChartFilters) {
         setButtonIdle(button, originalText);
         return;
     }
     
-    // Gán lại filters từ pieChartFilters (vì getPieChartPayload đã gộp)
     const filters = pieChartFilters;
 
     try {
-        // [THAY ĐỔI] Thêm API thứ 4 cho table_data
         const [overviewRes, chartRes, pieChartRes, tableRes] = await Promise.all([
             // 1. Overview
             fetch('/api/overview_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filters) // Dùng filters chung
+                body: JSON.stringify(filters) 
             }),
             // 2. Line Chart
             fetch('/api/chart_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filters) // Dùng filters chung
+                body: JSON.stringify(filters) 
             }),
             // 3. Pie Chart
             fetch('/api/breakdown_chart', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pieChartFilters) // Dùng payload riêng của pie
+                body: JSON.stringify(pieChartFilters) 
             }),
-            // 4. [MỚI] Table Data
+            // 4. Table Data
             fetch('/api/table_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filters) // Dùng filters chung
+                body: JSON.stringify(filters) 
             })
         ]);
 
@@ -404,11 +479,11 @@ async function handleApplyFilters() {
             const err = await chartRes.json();
             throw new Error(`Lỗi chart: ${err.error}`);
         }
-        if (!pieChartRes.ok) { // [MỚI]
+        if (!pieChartRes.ok) { 
             const err = await pieChartRes.json();
             throw new Error(`Lỗi pie chart: ${err.error}`);
         }
-        if (!tableRes.ok) { // [MỚI]
+        if (!tableRes.ok) { 
             const err = await tableRes.json();
             throw new Error(`Lỗi table data: ${err.error}`);
         }
@@ -416,14 +491,13 @@ async function handleApplyFilters() {
         // Lấy JSON
         const overviewData = await overviewRes.json();
         const chartData = await chartRes.json();
-        const pieChartData = await pieChartRes.json(); // [MỚI]
-        const tableData = await tableRes.json(); // [MỚI]
+        const pieChartData = await pieChartRes.json(); 
+        const tableData = await tableRes.json(); 
 
         // Render dữ liệu
         renderOverviewData(overviewData.scorecards);
         renderChartData(chartData);
         
-        // [THAY ĐỔI] Render pie chart với tiêu đề động
         const metricText = elChartMetric.options[elChartMetric.selectedIndex].text;
         const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
         renderPieChartData(pieChartData, `${metricText} theo ${dimText}`);
@@ -439,25 +513,18 @@ async function handleApplyFilters() {
 }
 
 /**
- * [MỚI] Hàm này CHỈ cập nhật biểu đồ tròn
- * (Được gọi khi thay đổi metric hoặc dimension)
+ * Hàm này CHỈ cập nhật biểu đồ tròn
  */
 async function handlePieChartUpdate() {
     // (Giữ nguyên)
     console.log("Đang cập nhật biểu đồ tròn...");
     
-    // 1. Lấy payload (bao gồm filter chung + filter riêng của pie)
     const payload = getPieChartPayload();
     if (!payload) {
-        return; // Lỗi đã được hiển thị bởi getPieChartPayload
+        return; 
     }
-
-    // TODO: Thêm hiệu ứng loading cho biểu đồ tròn (tùy chọn)
-    // platformChartInstance.options.plugins.title.text = 'Đang tải...';
-    // platformChartInstance.update();
             
     try {
-        // 2. Chỉ gọi API của biểu đồ breakdown
         const response = await fetch('/api/breakdown_chart', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -471,12 +538,10 @@ async function handlePieChartUpdate() {
         
         const pieChartData = await response.json();
         
-        // 3. Lấy text từ dropdown để tạo tiêu đề động
         const metricText = elChartMetric.options[elChartMetric.selectedIndex].text;
         const dimText = elChartDimension.options[elChartDimension.selectedIndex].text;
         const title = `${metricText} theo ${dimText}`;
         
-        // 4. Render lại biểu đồ
         renderPieChartData(pieChartData, title);
         
     } catch (error) {
@@ -511,7 +576,7 @@ async function loadAccountDropdown() {
         elAccount.disabled = false;
         elTime.disabled = false;
         
-        // [MỚI] Mở khóa 2 dropdown của biểu đồ tròn
+        // Mở khóa 2 dropdown của biểu đồ tròn
         elChartMetric.disabled = false;
         elChartDimension.disabled = false;
 
@@ -620,9 +685,7 @@ function renderOverviewData(data) {
     const formatPercent = (num) => `${parseFloat(num || 0).toFixed(2)}%`;
 
     /**
-     * [MỚI] Hàm helper để tạo HTML cho chỉ số tăng trưởng/thay đổi
-     * @param {number | null | undefined} value - Giá trị (growth hoặc absolute)
-     * @param {'percent' | 'number' | 'currency' | 'percent_points'} type - Kiểu định dạng
+     * Hàm helper để tạo HTML cho chỉ số tăng trưởng/thay đổi
      */
     const renderGrowthHtml = (value, type) => {
         if (value === null || typeof value === 'undefined' || value === 0) {
@@ -635,10 +698,8 @@ function renderOverviewData(data) {
 
         let formattedValue;
         if (type === 'percent') {
-            // value = 0.15 -> 15.00%
             formattedValue = `${Math.abs(value * 100).toFixed(1)}%`;
         } else if (type === 'percent_points') {
-            // value = 0.5 (từ 1% lên 1.5%) -> 0.50 pp
             formattedValue = `${Math.abs(value).toFixed(1)} pp`;
         } else if (type === 'currency') {
             formattedValue = formatCurrency(Math.abs(value));
@@ -646,35 +707,31 @@ function renderOverviewData(data) {
             formattedValue = formatNumber(Math.abs(value));
         }
 
-        // Trả về HTML, feather.replace() sẽ được gọi sau
         return `<span class="${colorClass} flex items-center">
                     <i data-feather="${iconName}" class="w-4 h-4 mr-1"></i>
                     <span>${formattedValue}</span>
                 </span>`;
     };
 
-    // Lấy DOM elements (Giữ nguyên)
+    // Lấy DOM elements
     const kpiSpend = document.getElementById('kpi-total-spend');
     const kpiImpressions = document.getElementById('kpi-total-impressions');
     const kpiCtr = document.getElementById('kpi-avg-ctr');
     const kpiPurchases = document.getElementById('kpi-total-purchases');
     
-    // Render (Giữ nguyên)
+    // Render
     if (kpiSpend) kpiSpend.innerText = formatCurrency(data.total_spend);
     if (kpiImpressions) kpiImpressions.innerText = formatNumber(data.total_impressions);
-    
-    // [THAY ĐỔI] Sử dụng giá trị tính thủ công mới
     if (kpiCtr) kpiCtr.innerText = formatPercent(data.ctr); 
-    
     if (kpiPurchases) kpiPurchases.innerText = formatNumber(data.total_purchases);
 
-    // [MỚI] Cập nhật 4 Scorecard - GROWTH (Percent)
+    // Cập nhật 4 Scorecard - GROWTH (Percent)
     document.getElementById('kpi-total-spend-growth').innerHTML = renderGrowthHtml(data.total_spend_growth, 'percent');
     document.getElementById('kpi-total-impressions-growth').innerHTML = renderGrowthHtml(data.total_impressions_growth, 'percent');
     document.getElementById('kpi-avg-ctr-growth').innerHTML = renderGrowthHtml(data.ctr_growth, 'percent');
     document.getElementById('kpi-total-purchases-growth').innerHTML = renderGrowthHtml(data.total_purchases_growth, 'percent');
     
-    // (Giữ nguyên phần Funnel)
+    // Funnel
     const elFunnelCost = document.getElementById('funnel-total-cost');
     if (elFunnelCost) elFunnelCost.innerText = formatCurrency(data.total_spend);
     const elFunnelImp = document.getElementById('funnel-impressions');
@@ -682,7 +739,7 @@ function renderOverviewData(data) {
     const elFunnelEng = document.getElementById('funnel-post-engagement');
     if (elFunnelEng) elFunnelEng.innerText = formatNumber(data.total_post_engagement);
     const elFunnelClicks = document.getElementById('funnel-clicks');
-    if (elFunnelClicks) elFunnelClicks.innerText = formatNumber(data.total_clicks); // <-- Dùng data.total_clicks
+    if (elFunnelClicks) elFunnelClicks.innerText = formatNumber(data.total_clicks); 
     const elFunnelMsg = document.getElementById('funnel-messaging');
     if (elFunnelMsg) elFunnelMsg.innerText = formatNumber(data.total_messages);
     const elFunnelCpm = document.getElementById('funnel-cpm');
@@ -699,31 +756,30 @@ function renderOverviewData(data) {
     
     // 1. Nhóm hiển thị
     const elDetailImp = document.getElementById('kpi-detail-impressions');
-    if (elDetailImp) elDetailImp.innerText = formatNumber(data.total_impressions); // <-- Dùng data.total_impressions
+    if (elDetailImp) elDetailImp.innerText = formatNumber(data.total_impressions); 
     document.getElementById('kpi-detail-impressions-growth').innerHTML = renderGrowthHtml(data.total_impressions_absolute, 'number');
 
     const elDetailReach = document.getElementById('kpi-detail-reach');
     if (elDetailReach) elDetailReach.innerText = formatNumber(data.total_reach);
     document.getElementById('kpi-detail-reach-growth').innerHTML = renderGrowthHtml(data.total_reach_absolute, 'number');
     
-    const elDetailCtr = document.getElementById('kpi-detail-ctr'); //
-    // [THAY ĐỔI] Sử dụng giá trị tính thủ công mới
+    const elDetailCtr = document.getElementById('kpi-detail-ctr'); 
     if (elDetailCtr) elDetailCtr.innerText = formatPercent(data.ctr); 
-    document.getElementById('kpi-detail-ctr-growth').innerHTML = renderGrowthHtml(data.ctr_absolute, 'percent_points'); // Dùng 'pp' cho chênh lệch CTR
+    document.getElementById('kpi-detail-ctr-growth').innerHTML = renderGrowthHtml(data.ctr_absolute, 'percent_points'); 
 
     // 2. Nhóm chỉ số tương tác
     const elDetailEng = document.getElementById('kpi-detail-post-engagement');
     if (elDetailEng) elDetailEng.innerText = formatNumber(data.total_post_engagement);
-    document.getElementById('kpi-detail-post-engagement-growth').innerHTML = renderGrowthHtml(data.total_post_engagement_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+    document.getElementById('kpi-detail-post-engagement-growth').innerHTML = renderGrowthHtml(data.total_post_engagement_absolute, 'number'); 
 
     const elDetailLinkClick = document.getElementById('kpi-detail-link-click');
     if (elDetailLinkClick) elDetailLinkClick.innerText = formatNumber(data.total_link_click);
-    document.getElementById('kpi-detail-link-click-growth').innerHTML = renderGrowthHtml(data.total_link_click_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+    document.getElementById('kpi-detail-link-click-growth').innerHTML = renderGrowthHtml(data.total_link_click_absolute, 'number'); 
 
     // 3. Nhóm tỉ lệ chuyển đổi
     const elDetailMsg = document.getElementById('kpi-detail-messages');
     if (elDetailMsg) elDetailMsg.innerText = formatNumber(data.total_messages);
-    document.getElementById('kpi-detail-messages-growth').innerHTML = renderGrowthHtml(data.total_messages_absolute, 'number'); // Sẽ là (n/a) nếu API không trả về
+    document.getElementById('kpi-detail-messages-growth').innerHTML = renderGrowthHtml(data.total_messages_absolute, 'number'); 
 
     const elDetailPurch = document.getElementById('kpi-detail-purchases');
     if (elDetailPurch) elDetailPurch.innerText = formatNumber(data.total_purchases);
@@ -731,7 +787,7 @@ function renderOverviewData(data) {
 
     const elDetailPurchVal = document.getElementById('kpi-detail-purchase-value');
     if (elDetailPurchVal) elDetailPurchVal.innerText = formatCurrency(data.total_purchase_value);
-    document.getElementById('kpi-detail-purchase-value-growth').innerHTML = renderGrowthHtml(data.total_purchase_value_absolute, 'currency'); // Sẽ là (n/a) nếu API không trả về
+    document.getElementById('kpi-detail-purchase-value-growth').innerHTML = renderGrowthHtml(data.total_purchase_value_absolute, 'currency'); 
     
     feather.replace();
 }
@@ -746,21 +802,16 @@ function renderChartData(chartData) {
 }
 
 /**
- * [THAY ĐỔI] Hàm render biểu đồ tròn (pie chart)
- * (Được cập nhật từ phiên bản trước)
- * @param {object} pieChartData - Dữ liệu từ API (/api/breakdown_chart)
- * @param {string} title - Tiêu đề động cho biểu đồ
+ * Hàm render biểu đồ tròn (pie chart)
  */
 function renderPieChartData(pieChartData, title = 'Breakdown') {
     // (Giữ nguyên)
     if (platformChartInstance) {
-        // Kiểm tra xem có dữ liệu hay không
         if (pieChartData && pieChartData.labels && pieChartData.labels.length > 0) {
             platformChartInstance.data.labels = pieChartData.labels;
             platformChartInstance.data.datasets = pieChartData.datasets;
-            platformChartInstance.options.plugins.title.text = title; // Cập nhật tiêu đề
+            platformChartInstance.options.plugins.title.text = title; 
         } else {
-            // Nếu không có dữ liệu (hoặc là null do lỗi)
             platformChartInstance.data.labels = ['Không có dữ liệu'];
             platformChartInstance.data.datasets = [{ 
                 label: 'Phân bổ', 
@@ -768,7 +819,6 @@ function renderPieChartData(pieChartData, title = 'Breakdown') {
                 backgroundColor: ['#E5E7EB'], 
                 hoverOffset: 4 
             }];
-            // Sử dụng tiêu đề được truyền vào (ví dụ: 'Lỗi tải dữ liệu' hoặc 'Không tìm thấy dữ liệu')
             platformChartInstance.options.plugins.title.text = (title === 'Breakdown') ? 'Không tìm thấy dữ liệu' : title;
         }
         platformChartInstance.update();
@@ -815,17 +865,15 @@ function getFilterPayload() {
 }
 
 /**
- * [MỚI] Hàm helper để lấy payload đầy đủ cho biểu đồ tròn
+ * Hàm helper để lấy payload đầy đủ cho biểu đồ tròn
  */
 function getPieChartPayload() {
     // (Giữ nguyên)
-    // 1. Lấy các filter cơ bản (ngày, tài khoản, campaign...)
     const baseFilters = getFilterPayload();
     if (!baseFilters) {
-        return null; // Lỗi đã được hiển thị bởi getFilterPayload
+        return null; 
     }
     
-    // 2. Lấy các filter riêng của biểu đồ tròn (metric, dimension)
     const metric = elChartMetric.value;
     const dimension = elChartDimension.value;
     
@@ -834,7 +882,6 @@ function getPieChartPayload() {
         return null;
     }
 
-    // 3. Gộp chúng lại và trả về
     return {
         ...baseFilters,
         metric: metric,
@@ -885,7 +932,7 @@ function resetDropdown(instance) {
 }
 
 function setDropdownLoading(instance, loadingText) {
-    // (GiGữ nguyên)
+    // (Giữ nguyên)
     if (!instance) return;
     if (instance.loadOptions) {
         instance.innerHTML = '';
@@ -953,8 +1000,7 @@ function triggerCampaignLoad() {
 }
 
 /**
- * [MỚI] Hàm helper để tạo badge cho trạng thái chiến dịch
- * @param {string} status - Trạng thái (ví dụ: 'ACTIVE', 'PAUSED')
+ * Hàm helper để tạo badge cho trạng thái chiến dịch
  */
 function getStatusBadge(status) {
     // (Giữ nguyên)
@@ -975,9 +1021,7 @@ function getStatusBadge(status) {
 }
 
 /**
- * [MỚI] Hàm render dữ liệu cho bảng hiệu suất chiến dịch
- * @param {Array} data - Dữ liệu từ API (/api/table_data)
- * @param {string} errorMsg - Thông báo lỗi (tùy chọn)
+ * Hàm render dữ liệu cho bảng hiệu suất chiến dịch
  */
 function renderTableData(data, errorMsg = null) {
     // (Giữ nguyên)

@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import pytz
 import requests
 from dotenv import load_dotenv
+from dateutil.relativedelta import relativedelta
 
 
 logging.basicConfig(level=logging.INFO)
@@ -754,6 +755,319 @@ class FacebookAdsExtractor:
                 break
                 
         return insights_data
+
+    def get_all_fanpages(self) -> List[Dict[str, Any]]:
+        """
+        Lấy TẤT CẢ các Fanpage.
+        Tự động xử lý phân trang (pagination).
+        """
+        all_pages = []
+        
+        url = f"{self.base_url}/me/accounts"
+        
+        # Các trường (fields) rất quan trọng cho Fanpage
+        # - access_token: Đây là Page Access Token, bạn cần nó để
+        #                 thực hiện hành động (post bài, đọc insights) cho Trang đó.
+        # - tasks: Cho bạn biết bạn có những quyền gì trên trang này (ví dụ: MANAGE, MODERATE)
+        params = {
+            'access_token': self.access_token,
+            'fields': 'id,name,access_token,category,tasks', 
+            'limit': 100 
+        }
+        
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                # Chỉ sử dụng params cho lần gọi đầu tiên
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                pages_page = data.get('data', [])
+                if not pages_page:
+                    logger.info("Không tìm thấy thêm Fanpage nào.")
+                    break
+                    
+                all_pages.extend(pages_page)
+                logger.info(f"Đã lấy được {len(pages_page)} Fanpage (Tổng: {len(all_pages)}).")
+
+                # Xử lý phân trang (Pagination) y hệt logic cũ
+                paging_data = data.get('paging', {})
+                if paging_data:
+                    url = paging_data.get('next') # Nếu next_page_url là None, vòng lặp sẽ dừng
+                else:
+                    url = None # Dừng nếu không có key 'paging'
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Fanpages (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+                
+        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(all_pages)} Fanpage.")
+        return all_pages
+    
+    def get_page_metrics_by_day(self, page_id: str, page_access_token: str, 
+                                  start_date: Optional[str] = None, end_date: Optional[str] = None,
+                                  metrics_list: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Lấy TỔNG HỢP metrics cho Fanpage, trả về một danh sách "phẳng" (flat list)
+        nhóm theo NGÀY, phù hợp để load vào database. Backend JS sẽ xử lý date_preset và input vào sau
+        
+        Args:
+            page_id (str): ID của Fanpage.
+            page_access_token (str): Page Access Token của Fanpage đó.
+            start_date (str): Ngày bắt đầu (YYYY-MM-DD).
+            end_date (str): Ngày kết thúc (YYYY-MM-DD).
+            metrics_list (Optional[List[str]]): Danh sách metric.
+        """
+        final_daily_list = []
+        # 1. Xử lý input ngày tháng
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            logger.error("Định dạng ngày không hợp lệ. Vui lòng dùng 'YYYY-MM-DD'.")
+            return []
+
+        # 2. Thiết lập metrics
+        if not metrics_list:
+            metrics_list = [
+                'page_fans', # Accumulative lifetime
+                'page_impressions', 
+                'page_post_engagements', 
+                'page_video_views',
+                'page_impressions_unique',
+                'page_fan_removes',
+                'page_fan_adds_unique'
+            ]
+        metrics_str = ",".join(metrics_list)
+        
+        # 3. Xây dựng URL và params ban đầu
+        url = f"{self.base_url}/{page_id}/insights"
+        
+        params = {
+            'access_token': page_access_token,
+            'metric': metrics_str,
+            'period': 'day',
+            'since': start_date,
+            'until': end_date,
+            'limit': 100 # Yêu cầu tối đa 100 ngày mỗi lần
+        }
+        
+        # 4. Dictionary để "pivot" dữ liệu theo ngày
+        #    Key là ngày (VD: '2025-10-01'), 
+        #    Value là một dict chứa tất cả metric của ngày đó
+        daily_data_pivot = {}
+        
+        page_count = 0
+        keep_looping = True # Cờ để dừng vòng lặp ngoài
+
+        while url and keep_looping:
+            try:
+                page_count += 1
+                current_params = params if page_count == 1 else {}
+                
+                response = requests.get(url, params=current_params)
+                response.raise_for_status()
+                
+                data = response.json()
+                metrics_page = data.get('data', [])
+
+                if not metrics_page:
+                    logger.info("Không tìm thấy thêm dữ liệu metrics nào.")
+                    break # Dừng vòng lặp while
+
+                # Lặp qua các metric (VD: page_impressions, page_fans...)
+                for metric in metrics_page:
+                    metric_name = metric.get('name')
+                    if not metric_name:
+                        continue
+                    
+                    # Lặp qua các giá trị (ngày) trong metric đó
+                    for value_entry in metric.get('values', []):
+                        end_time_str = value_entry.get('end_time')
+                        metric_value = value_entry.get('value')
+                        if not end_time_str:
+                            continue
+                            
+                        try:
+                            # Lấy object date (VD: date(2025, 10, 6))
+                            end_time_date = datetime.fromisoformat(end_time_str).date()
+                        except ValueError:
+                            logger.warning(f"Không thể parse ngày: {end_time_str}. Bỏ qua...")
+                            continue
+
+                        # 7. LOGIC KIỂM SOÁT (Giữ nguyên)
+                        if start_date_obj <= end_time_date <= end_date_obj:
+                            # Ngày này hợp lệ, tiến hành "pivot"
+                            date_key = end_time_date.isoformat() # Dùng 'YYYY-MM-DD' làm key
+                            
+                            # Nếu chưa có "dòng" (record) nào cho ngày này, tạo mới
+                            if date_key not in daily_data_pivot:
+                                daily_data_pivot[date_key] = {
+                                    "page_id": page_id,
+                                    "date": date_key
+                                }
+                            
+                            # Thêm "cột" (metric) vào "dòng" (ngày)
+                            # VD: daily_data_pivot['2025-10-06']['page_impressions'] = 46773
+                            daily_data_pivot[date_key][metric_name] = metric_value
+                            
+                        else:
+                            # Ngày này nằm ngoài khoảng yêu cầu -> Dừng
+                            logger.warning(f"Phát hiện dữ liệu ngày {end_time_date} "
+                                           f"nằm ngoài khoảng yêu cầu ({start_date_obj} - {end_date_obj}). "
+                                           "Dừng phân trang.")
+                            keep_looping = False
+                            break # Dừng vòng lặp 'for value_entry...'
+                    
+                    if not keep_looping:
+                        break # Dừng vòng lặp 'for metric...'
+
+                # 8. Lấy URL trang tiếp theo (Giữ nguyên)
+                if keep_looping: 
+                    paging_data = data.get('paging', {})
+                    url = paging_data.get('next')
+                    if not url:
+                        logger.info("Hoàn tất phân trang (không còn 'next').")
+                        break
+                else:
+                    logger.info("Dừng phân trang do phát hiện ngày nằm ngoài khoảng.")
+                    url = None
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Page Metrics (Trang {page_count}) cho Page {page_id}: {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+
+        # --- THAY ĐỔI LOGIC: Bước 9 ---
+        # 9. Trả về kết quả
+        # Chuyển đổi dict pivot (keyed by date) thành một danh sách các "dòng"
+        final_daily_list = list(daily_data_pivot.values())
+        logger.info(f"Tổng hợp hoàn tất. Trả về {len(final_daily_list)} bản ghi (ngày).")
+        return final_daily_list
+        
+    def get_posts_with_lifetime_insights(self, page_id: str, page_access_token: str,
+                                         start_date: str, end_date: str,
+                                         metrics_list: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Lấy các bài post được TẠO trong khoảng
+        start_date và end_date. Lấy media, shares, comment_count, và metrics LIFETIME. Backend JS sẽ xử lý date_preset và input vào sau.
+        
+        Args:
+            page_id (str): ID của Fanpage.
+            page_access_token (str): Page Access Token của Fanpage đó.
+            start_date (str): Ngày bắt đầu (YYYY-MM-DD).
+            end_date (str): Ngày kết thúc (YYYY-MM-DD).
+            metrics_list (Optional[List[str]]): Danh sách metric. Nếu None, dùng mặc định.
+        """
+        all_posts_data = []
+        
+        # 1. Xử lý metric (nếu không nhập, dùng mặc định của bạn)
+        if not metrics_list:
+            metrics_list = [
+                'post_reactions_like_total',
+                'post_impressions',
+                'post_clicks'
+            ]
+        metrics_str = ",".join(metrics_list)
+        
+        # 2. Xây dựng chuỗi fields
+        base_fields = 'id,message,created_time,full_picture,shares,properties'
+        insights_field = f'insights.metric({metrics_str})'
+        comments_field = 'comments.summary(total_count)'
+        
+        fields_query = f"{base_fields},{insights_field},{comments_field}"
+        
+        # 3. Xây dựng endpoint và params
+        url = f"{self.base_url}/{page_id}/posts"
+        
+        params = {
+            'access_token': page_access_token,
+            'since': start_date,
+            'until': end_date,
+            'fields': fields_query,
+            'limit': 50 # Giảm limit một chút vì query này khá nặng
+        }
+        
+        page_count = 0
+        
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                posts_page = data.get('data', [])
+                if not posts_page:
+                    logger.info("Không tìm thấy thêm bài đăng nào trong khoảng này.")
+                    break
+                
+                # 4. Xử lý (Parsing) dữ liệu chi tiết
+                for post in posts_page:
+                    post_data = {
+                        'post_id': post.get('id'),
+                        'message': post.get('message', 'Không có nội dung text'),
+                        'created_time': post.get('created_time'),
+                        'full_picture_url': post.get('full_picture'),
+                        'shares_count': post.get('shares', {}).get('count', 0),
+                        'properties': post.get('properties', {}).get('name','Static'),
+                        'fetch_range': f"{start_date}_to_{end_date}"
+                    }
+                    
+                    # Lấy tổng số comment
+                    post_data['comments_total_count'] = post.get('comments', {}).get('summary', {}).get('total_count', 0)
+                    
+                    # Lấy dữ liệu insights (chỉ quan tâm lifetime)
+                    insights_data = post.get('insights', {}).get('data', [])
+                    
+                    for metric in insights_data:
+                        metric_name = metric.get('name')
+                        metric_period = metric.get('period')
+                        
+                        # Chỉ lấy metric 'lifetime' như bạn yêu cầu
+                        if metric_period == 'lifetime' and metric_name in metrics_list:
+                            metric_value = metric.get('values', [{}])[0].get('value', 0)
+                            # Thêm thẳng vào post_data (ví dụ: 'post_impressions': 12345)
+                            post_data[metric_name] = metric_value
+                    
+                    # Gán giá trị 0 cho các metric không tìm thấy (để đảm bảo cột)
+                    for m in metrics_list:
+                        if m not in post_data:
+                            post_data[m] = 0
+                            
+                    all_posts_data.append(post_data)
+
+                logger.info(f"Đã lấy được {len(posts_page)} bài đăng (Tổng: {len(all_posts_data)}).")
+
+                # 5. Xử lý phân trang (Pagination)
+                paging_data = data.get('paging', {})
+                if paging_data:
+                    url = paging_data.get('next')
+                else:
+                    url = None
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Posts (Trang {page_count}) cho Page {page_id}: {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+                
+        logger.info(f"Hoàn tất! Lấy được tổng cộng {len(all_posts_data)} bài đăng.")
+        return all_posts_data
 
 def main():
     try:
