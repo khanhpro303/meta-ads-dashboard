@@ -10,7 +10,7 @@ from matplotlib.dates import relativedelta
 from sqlalchemy import func, select, and_, case
 
 # Import các lớp từ database_manager
-from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, FactPerformanceDemographic
+from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, FactPerformanceDemographic, DimFanpage, FactPageMetricsDaily, FactPostPerformance
 from ai_agent import AIAgent
 
 DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
@@ -955,6 +955,305 @@ def handle_chat():
     except Exception as e:
         logger.error(f"Lỗi tại endpoint /api/chat: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/refresh_fanpage', methods=['POST'])
+def refresh_data_fanpage():
+    """
+    Kích hoạt quy trình làm mới dữ liệu (ETL) cho FANPAGE vào database.
+    """
+    try:
+        data = request.get_json()
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+
+        # Xác định ngày bắt đầu và kết thúc
+        start_date, end_date = None, None
+        if date_preset and date_preset in DATE_PRESET:
+            logger.info(f"Yêu cầu tải lại dữ liệu theo date_preset: {date_preset}")
+            today = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date()
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            logger.info(f"Yêu cầu tải lại dữ liệu theo khoảng thời gian: {start_date_input} - {end_date_input}")
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            # Mặc định an toàn nếu không có gì được gửi
+            end_date = datetime.today().date()
+            start_date = end_date.replace(day=1)
+        
+        # Hàm refresh_data_fanpage CHỈ chấp nhận start_date và end_date
+        db_manager.refresh_data_fanpage(
+            start_date=start_date.strftime('%Y-%m-%d'), 
+            end_date=end_date.strftime('%Y-%m-%d')
+        )
+        
+        return jsonify({'message': 'Dữ liệu FANPAGE đã được làm mới thành công.'})
+    
+    except Exception as e:
+        logger.error(f"Lỗi khi làm mới dữ liệu FANPAGE: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+# ======================================================================
+# API ENDPOINTS - FANPAGE OVERVIEW
+# ======================================================================
+
+@app.route('/api/fanpage/list', methods=['GET'])
+def get_fanpage_list():
+    """
+    Lấy danh sách Fanpage (ID, Name) từ dim_fanpage để điền vào
+    dropdown filter (id="fp-filter-fanpage").
+    """
+    session = db_manager.SessionLocal()
+    try:
+        pages = session.query(DimFanpage.page_id, DimFanpage.name)\
+            .order_by(DimFanpage.name)\
+            .all()
+        
+        page_list = [{'id': page.page_id, 'name': page.name} for page in pages]
+        return jsonify(page_list)
+        
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy danh sách Fanpage: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
+
+@app.route('/api/fanpage/overview_data', methods=['POST'])
+def get_fanpage_overview_data():
+    """
+    Lấy TOÀN BỘ dữ liệu cho Panel Fanpage Overview, bao gồm:
+    1. Scorecards (KPIs) (từ 2 bảng Fact)
+    2. Main Chart (từ FactPageMetricsDaily)
+    3. Interactions Table (từ FactPageMetricsDaily)
+    4. Content Type Table (từ FactPostPerformance)
+    5. Top 5 Content Tables (từ FactPostPerformance)
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        page_id = data.get('page_id')
+        date_preset = data.get('date_preset', 'last_30d') # Mặc định là 'last_30d'
+
+        if not page_id:
+            return jsonify({'error': 'Thiếu "page_id".'}), 400
+
+        # === 1. TÍNH TOÁN KHOẢNG THỜI GIAN ===
+        # Sử dụng hàm helper _calculate_date_range đã có
+        today = datetime.today().date()
+        start_date, end_date = _calculate_date_range(date_preset, today)
+        
+        # Tính kỳ trước để so sánh
+        duration_days = (end_date - start_date).days + 1
+        prev_end_date = start_date - timedelta(days=1)
+        prev_start_date = prev_end_date - timedelta(days=duration_days - 1)
+        
+        # Chuyển đổi sang datetime cho FactPostPerformance (vì created_time là DateTime)
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        prev_start_datetime = datetime.combine(prev_start_date, datetime.min.time())
+        prev_end_datetime = datetime.combine(prev_end_date, datetime.max.time())
+
+        # === 2. HÀM HELPER TÍNH TOÁN ===
+        
+        def _calculate_growth(current, previous):
+            current_val = float(current or 0)
+            previous_val = float(previous or 0)
+            if previous_val == 0:
+                return None # Tránh chia cho 0
+            return (current_val - previous_val) / previous_val
+
+        # === 3. TRUY VẤN DỮ LIỆU (TỔ HỢP NHIỀU TRUY VẤN) ===
+        
+        # --- Q1 & Q2: Dữ liệu cho Scorecard (KPIs) ---
+        
+        # Helper để lấy metrics TỔNG HỢP (từ FactPageMetricsDaily)
+        def _get_daily_kpis(p_id, s_date, e_date):
+            return session.query(
+                func.sum(FactPageMetricsDaily.page_fan_adds_unique).label('new_likes'),
+                func.sum(FactPageMetricsDaily.page_impressions).label('impressions'),
+                func.sum(FactPageMetricsDaily.page_post_engagements).label('engagement'),
+                func.sum(FactPageMetricsDaily.page_video_views).label('video_views')
+            ).join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
+             .filter(FactPageMetricsDaily.page_id == p_id)\
+             .filter(DimDate.full_date.between(s_date, e_date))\
+             .first()
+
+        # Helper để lấy metrics POST (từ FactPostPerformance)
+        def _get_post_kpis(p_id, s_datetime, e_datetime):
+            return session.query(
+                func.sum(FactPostPerformance.lt_post_clicks).label('clicks'),
+                func.sum(FactPostPerformance.comments_total_count).label('comments'),
+                func.sum(FactPostPerformance.lt_post_reactions_like_total).label('post_likes')
+            ).filter(FactPostPerformance.page_id == p_id)\
+             .filter(FactPostPerformance.created_time.between(s_datetime, e_datetime))\
+             .first()
+
+        # Helper để lấy Total Likes (metric tích lũy)
+        def _get_total_likes(p_id, at_date):
+            result = session.query(FactPageMetricsDaily.page_fans)\
+                .join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
+                .filter(FactPageMetricsDaily.page_id == p_id)\
+                .filter(DimDate.full_date == at_date)\
+                .order_by(FactPageMetricsDaily.page_fans.desc())\
+                .first()
+            return result.page_fans if result else 0
+
+        # Lấy dữ liệu 2 kỳ
+        current_daily_kpis = _get_daily_kpis(page_id, start_date, end_date)
+        prev_daily_kpis = _get_daily_kpis(page_id, prev_start_date, prev_end_date)
+        
+        current_post_kpis = _get_post_kpis(page_id, start_datetime, end_datetime)
+        prev_post_kpis = _get_post_kpis(page_id, prev_start_datetime, prev_end_datetime)
+        
+        current_total_likes = _get_total_likes(page_id, end_date)
+
+        # Gộp thành 1 dict `scorecards`
+        scorecards = {
+            'total_likes': current_total_likes,
+            'new_likes': current_daily_kpis.new_likes or 0,
+            'new_likes_growth': _calculate_growth(current_daily_kpis.new_likes, prev_daily_kpis.new_likes),
+            'impressions': current_daily_kpis.impressions or 0,
+            'impressions_growth': _calculate_growth(current_daily_kpis.impressions, prev_daily_kpis.impressions),
+            'engagement': current_daily_kpis.engagement or 0,
+            'engagement_growth': _calculate_growth(current_daily_kpis.engagement, prev_daily_kpis.engagement),
+            'video_views': current_daily_kpis.video_views or 0,
+            'video_views_growth': _calculate_growth(current_daily_kpis.video_views, prev_daily_kpis.video_views),
+            'clicks': current_post_kpis.clicks or 0,
+            'clicks_growth': _calculate_growth(current_post_kpis.clicks, prev_post_kpis.clicks),
+            'comments': current_post_kpis.comments or 0,
+            'comments_growth': _calculate_growth(current_post_kpis.comments, prev_post_kpis.comments),
+            'post_likes': current_post_kpis.post_likes or 0,
+            'post_likes_growth': _calculate_growth(current_post_kpis.post_likes, prev_post_kpis.post_likes),
+        }
+
+        # --- Q3: Dữ liệu cho Main Chart (fp-main-chart) ---
+        # (Lấy từ FactPageMetricsDaily)
+        chart_query = session.query(
+            DimDate.full_date,
+            func.sum(FactPageMetricsDaily.page_fan_adds_unique).label('new_likes'),
+            func.sum(FactPageMetricsDaily.page_impressions).label('impressions'),
+            func.sum(FactPageMetricsDaily.page_post_engagements).label('engagement')
+            # LƯU Ý: Không thể lấy "Post Clicks" theo ngày vì nó là metric lifetime
+        ).join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
+         .filter(FactPageMetricsDaily.page_id == page_id)\
+         .filter(DimDate.full_date.between(start_date, end_date))\
+         .group_by(DimDate.full_date)\
+         .order_by(DimDate.full_date)\
+         .all()
+
+        # Tạo map để điền ngày thiếu
+        chart_results_map = {res.full_date: res for res in chart_query}
+        chart_labels = []
+        chart_new_likes_data = []
+        chart_impressions_data = []
+        chart_engagement_data = []
+        
+        current_chart_date = start_date
+        while current_chart_date <= end_date:
+            date_str = current_chart_date.strftime('%Y-%m-%d')
+            chart_labels.append(date_str)
+            
+            if current_chart_date in chart_results_map:
+                res = chart_results_map[current_chart_date]
+                chart_new_likes_data.append(res.new_likes or 0)
+                chart_impressions_data.append(res.impressions or 0)
+                chart_engagement_data.append(res.engagement or 0)
+            else:
+                chart_new_likes_data.append(0)
+                chart_impressions_data.append(0)
+                chart_engagement_data.append(0)
+            
+            current_chart_date += timedelta(days=1)
+
+        main_chart_data = {
+            'labels': chart_labels,
+            'datasets': [
+                {'label': 'New likes', 'data': chart_new_likes_data, 'borderColor': '#3b82f6'},
+                {'label': 'Page Impressions', 'data': chart_impressions_data, 'borderColor': '#9ca3af'},
+                {'label': 'Page Post Engagements', 'data': chart_engagement_data, 'borderColor': '#f472b6'}
+            ]
+        }
+
+        # --- Q4: Dữ liệu Bảng Tương Tác (fp-interactions-table-body) ---
+        # (Gần giống Q3, nhưng thêm video_views và trả về list)
+        table_query = session.query(
+            DimDate.full_date,
+            func.sum(FactPageMetricsDaily.page_impressions).label('impressions'),
+            func.sum(FactPageMetricsDaily.page_post_engagements).label('engagement'),
+            func.sum(FactPageMetricsDaily.page_video_views).label('video_views')
+            # LƯU Ý: Không thể lấy Clicks, Comments theo ngày từ schema này
+        ).join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
+         .filter(FactPageMetricsDaily.page_id == page_id)\
+         .filter(DimDate.full_date.between(start_date, end_date))\
+         .group_by(DimDate.full_date)\
+         .order_by(DimDate.full_date.desc())\
+         .all()
+        
+        interactions_table = [
+            {
+                'date': row.full_date.strftime('%Y-%m-%d'),
+                'impressions': row.impressions or 0,
+                'engagement': row.engagement or 0,
+                'video_views': row.video_views or 0,
+                'clicks': 0, # Không có dữ liệu daily cho metric này
+                'comments': 0 # Không có dữ liệu daily cho metric này
+            } for row in table_query
+        ]
+
+        # --- Q5: Bảng Sơ Lượng Content (fp-content-type-body) ---
+        content_type_query = session.query(
+            FactPostPerformance.post_type,
+            func.count(FactPostPerformance.post_id).label('count')
+        ).filter(FactPostPerformance.page_id == page_id)\
+         .filter(FactPostPerformance.created_time.between(start_datetime, end_datetime))\
+         .group_by(FactPostPerformance.post_type)\
+         .order_by(func.count(FactPostPerformance.post_id).desc())\
+         .all()
+        
+        content_type_table = [
+            {'type': row.post_type or 'Unknown', 'count': row.count}
+            for row in content_type_query
+        ]
+
+        # --- Q6: Bảng Top 5 Content (3 bảng) ---
+        def _get_top_posts(metric_column, limit=5):
+            return session.query(
+                FactPostPerformance.message,
+                FactPostPerformance.full_picture_url,
+                metric_column.label('metric_value')
+            ).filter(FactPostPerformance.page_id == page_id)\
+             .filter(FactPostPerformance.created_time.between(start_datetime, end_datetime))\
+             .order_by(metric_column.desc().nullslast())\
+             .limit(limit)\
+             .all()
+
+        top_impressions = _get_top_posts(FactPostPerformance.lt_post_impressions)
+        top_likes = _get_top_posts(FactPostPerformance.lt_post_reactions_like_total)
+        top_clicks = _get_top_posts(FactPostPerformance.lt_post_clicks)
+
+        top_content_data = {
+            'impressions': [{'message': row.message, 'image': row.full_picture_url, 'value': row.metric_value or 0} for row in top_impressions],
+            'likes': [{'message': row.message, 'image': row.full_picture_url, 'value': row.metric_value or 0} for row in top_likes],
+            'clicks': [{'message': row.message, 'image': row.full_picture_url, 'value': row.metric_value or 0} for row in top_clicks]
+        }
+        
+        # === 7. TỔNG HỢP VÀ TRẢ VỀ ===
+        response_data = {
+            'scorecards': scorecards,
+            'mainChartData': main_chart_data,
+            'interactionsTable': interactions_table,
+            'contentTypeTable': content_type_table,
+            'topContentData': top_content_data
+        }
+        
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu Fanpage Overview: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
 
 if __name__ == '__main__':
     app.run(debug=True)

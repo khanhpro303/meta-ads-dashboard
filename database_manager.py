@@ -1145,7 +1145,11 @@ class DatabaseManager:
                 for d_str in all_dates_str:
                     dt = parse_datetime_flexible(d_str)
                     if dt:
-                        all_dates_obj.append(dt)
+                        if dt.tzinfo is not None:
+                            dt_naive = dt.astimezone(pytz.utc).replace(tzinfo=None)
+                            all_dates_obj.append(dt_naive)
+                        else:
+                            all_dates_obj.append(dt)
                 
                 if all_dates_obj:
                     min_date = min(all_dates_obj)

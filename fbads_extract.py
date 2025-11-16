@@ -990,11 +990,21 @@ class FacebookAdsExtractor:
         
         # 3. Xây dựng endpoint và params
         url = f"{self.base_url}/{page_id}/posts"
+
+        # Endpoint /posts yêu cầu 'since' < 'until'.
+        # Chúng ta sẽ cộng 1 ngày vào 'end_date' để làm 'until_date'.
+        try:
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+            until_date_obj = end_date_obj + relativedelta(days=1)
+            until_date_str = until_date_obj.strftime('%Y-%m-%d')
+        except ValueError:
+            logger.error(f"Định dạng ngày '{end_date}' không hợp lệ. Sử dụng ngày gốc.")
+            until_date_str = end_date # Fallback
         
         params = {
             'access_token': page_access_token,
             'since': start_date,
-            'until': end_date,
+            'until': until_date_str,
             'fields': fields_query,
             'limit': 50 # Giảm limit một chút vì query này khá nặng
         }
@@ -1015,13 +1025,18 @@ class FacebookAdsExtractor:
                 
                 # 4. Xử lý (Parsing) dữ liệu chi tiết
                 for post in posts_page:
+                    properties_text = None
+                    properties_list = post.get('properties', []) # Đây là một list
+                    if properties_list and isinstance(properties_list, list) and len(properties_list) > 0:
+                        # Lấy 'text' từ dict ĐẦU TIÊN trong list
+                        properties_text = properties_list[0].get('text')
                     post_data = {
                         'post_id': post.get('id'),
                         'message': post.get('message', 'Không có nội dung text'),
                         'created_time': post.get('created_time'),
                         'full_picture_url': post.get('full_picture'),
                         'shares_count': post.get('shares', {}).get('count', 0),
-                        'properties': post.get('properties', {}).get('name','Static'),
+                        'properties': properties_text,
                         'fetch_range': f"{start_date}_to_{end_date}"
                     }
                     
