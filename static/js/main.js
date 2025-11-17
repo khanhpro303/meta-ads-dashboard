@@ -1789,6 +1789,7 @@ function renderCDPerformanceData(data) {
     const genderTableBody = document.getElementById('gender-table-body');
     let genderHtml = '';
     let gTotalImp = 0, gTotalClicks = 0, gTotalValue = 0;
+    
     if (data.gender_table.length > 0) {
         data.gender_table.forEach(row => {
             genderHtml += `
@@ -1806,16 +1807,23 @@ function renderCDPerformanceData(data) {
     } else {
         genderHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
     }
-    // Cập nhật dòng tổng cộng
-    document.getElementById('gender-total-impressions').innerText = formatNumber(gTotalImp);
-    document.getElementById('gender-total-clicks').innerText = formatNumber(gTotalClicks);
-    document.getElementById('gender-total-value').innerText = formatCurrency(gTotalValue);
-    genderTableBody.innerHTML = genderHtml;
+        
+    // [SỬA LỖI] Thêm dòng "Tổng cộng" vào chuỗi HTML
+    genderHtml += `
+        <tr class="font-bold bg-gray-100 sticky bottom-0">
+            <td class="px-4 py-3">Tổng cộng</td>
+            <td class="px-4 py-3 text-right">${formatNumber(gTotalImp)}</td>
+            <td class="px-4 py-3 text-right">${formatNumber(gTotalClicks)}</td>
+            <td class="px-4 py-3 text-right">${formatCurrency(gTotalValue)}</td>
+        </tr>
+    `;
+    genderTableBody.innerHTML = genderHtml; // Ghi đè bằng HTML hoàn chỉnh
 
     // --- 2. Bảng Độ tuổi ---
     const ageTableBody = document.getElementById('age-table-body');
     let ageHtml = '';
     let aTotalImp = 0, aTotalClicks = 0, aTotalValue = 0;
+    
     if (data.age_table.length > 0) {
         data.age_table.forEach(row => {
             ageHtml += `
@@ -1833,17 +1841,24 @@ function renderCDPerformanceData(data) {
     } else {
         ageHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
     }
-    // Cập nhật dòng tổng cộng
-    document.getElementById('age-total-impressions').innerText = formatNumber(aTotalImp);
-    document.getElementById('age-total-clicks').innerText = formatNumber(aTotalClicks);
-    document.getElementById('age-total-value').innerText = formatCurrency(aTotalValue);
-    ageTableBody.innerHTML = ageHtml;
+    
+    // [SỬA LỖI] Thêm dòng "Tổng cộng" vào chuỗi HTML
+    ageHtml += `
+        <tr class="font-bold bg-gray-100 sticky bottom-0">
+            <td class="px-4 py-3">Tổng cộng</td>
+            <td class="px-4 py-3 text-right">${formatNumber(aTotalImp)}</td>
+            <td class,"px-4 py-3 text-right">${formatNumber(aTotalClicks)}</td>
+            <td class="px-4 py-3 text-right">${formatCurrency(aTotalValue)}</td>
+        </tr>
+    `;
+    ageTableBody.innerHTML = ageHtml; // Ghi đè bằng HTML hoàn chỉnh
 
 
     // --- 3. Bảng Địa lý ---
     const geoTableBody = document.getElementById('geo-table-body');
     let geoHtml = '';
     let geoTotalSpend = 0, geoTotalPurchases = 0;
+    
     if (data.geo_table.length > 0) {
         data.geo_table.forEach(row => {
             geoHtml += `
@@ -1851,7 +1866,7 @@ function renderCDPerformanceData(data) {
                     <td class="px-4 py-2.5">${row.region_name}</td>
                     <td class="px-4 py-2.5 text-right">${formatCurrency(row.spend)}</td>
                     <td class="px-4 py-2.5 text-right">${formatNumber(row.purchases)}</td>
-                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
+                    <td class_,"px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
                 </tr>
             `;
             geoTotalSpend += Number(row.spend) || 0;
@@ -1860,12 +1875,14 @@ function renderCDPerformanceData(data) {
     } else {
         geoHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
     }
-    // Cập nhật dòng tổng cộng
+    
+    // [SỬA LỖI] Logic của bảng Geo đã đúng (cập nhật DOM)
+    // Cập nhật dòng tổng cộng (vì nó nằm ngoài tbody)
     const avgCPA = geoTotalPurchases > 0 ? (geoTotalSpend / geoTotalPurchases) : 0;
     document.getElementById('geo-total-spend').innerText = formatCurrency(geoTotalSpend);
     document.getElementById('geo-total-purchases').innerText = formatNumber(geoTotalPurchases);
     document.getElementById('geo-total-cpa').innerText = formatCurrency(avgCPA);
-    geoTableBody.innerHTML = geoHtml;
+    geoTableBody.innerHTML = geoHtml; // Chỉ ghi đè data rows
     
     // --- 4. Biểu đồ tròn Địa lý ---
     if (cdRegionPieChartInstance) {
@@ -2024,5 +2041,24 @@ async function renderWaffleChart(data) {
         console.error('Lỗi khi render Waffle Chart:', error);
         // Hiển thị lỗi ngay tại container
         container.innerHTML = `<p class="text-red-500 p-4">Lỗi: ${error.message}</p>`;
+    }
+}
+
+/**
+ * [MỚI] Đóng modal drilldown
+ */
+function closeDrilldownModal(event) {
+    // Ngăn sự kiện click lan truyền
+    if (event) event.stopPropagation();
+    
+    const modal = document.getElementById('drilldown-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    
+    // Hủy biểu đồ cũ để giải phóng bộ nhớ
+    if (cdDrilldownChartInstance) {
+        cdDrilldownChartInstance.destroy();
+        cdDrilldownChartInstance = null;
     }
 }

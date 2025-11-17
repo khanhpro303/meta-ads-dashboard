@@ -792,15 +792,21 @@
             </div>
     
             <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ Địa lý (Bản đồ)</h2>
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ Địa lý</h2>
                 <div id="folium-map-container" class="w-full bg-gray-50 border rounded-lg flex items-center justify-center min-h-[500px]">
                     <p class="text-gray-500">Đang tải bản đồ...</p>
                     </div>
             </div>
     
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                
                 <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Phân phối theo Giới tính</h3>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <span class="flex items-center justify-center bg-pink-100 text-pink-800 rounded-full p-2 mr-3">
+                            <i data-feather="users" class="w-5 h-5"></i>
+                        </span>
+                        Phân phối theo Giới tính
+                    </h3>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-sm">
                             <thead class="sticky top-0">
@@ -812,19 +818,20 @@
                                 </tr>
                             </thead>
                             <tbody id="gender-table-body">
-                                <tr class="font-bold bg-gray-100 sticky bottom-0">
-                                    <td class="px-4 py-3">Tổng cộng</td>
-                                    <td id="gender-total-impressions" class="px-4 py-3 text-right">0</td>
-                                    <td id="gender-total-clicks" class="px-4 py-3 text-right">0</td>
-                                    <td id="gender-total-value" class="px-4 py-3 text-right">0 đ</td>
-                                </tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
+
                 <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Phân phối theo Độ tuổi</h3>
-                    <div class="overflow-x-auto max-h-80"> <table class="w-full text-left text-sm">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <span class="flex items-center justify-center bg-blue-100 text-blue-800 rounded-full p-2 mr-3">
+                            <i data-feather="target" class="w-5 h-5"></i>
+                        </span>
+                        Phân phối theo Độ tuổi
+                    </h3>
+                    <div class="overflow-x-auto max-h-80"> 
+                        <table class="w-full text-left text-sm">
                             <thead class="sticky top-0">
                                 <tr class="bg-gray-50 border-b-2 border-gray-100">
                                     <th class="px-4 py-3 font-semibold text-gray-600">Độ tuổi</th>
@@ -834,13 +841,7 @@
                                 </tr>
                             </thead>
                             <tbody id="age-table-body">
-                                <tr class="font-bold bg-gray-100 sticky bottom-0">
-                                    <td class="px-4 py-3">Tổng cộng</td>
-                                    <td id="age-total-impressions" class="px-4 py-3 text-right">0</td>
-                                    <td id="age-total-clicks" class="px-4 py-3 text-right">0</td>
-                                    <td id="age-total-value" class="px-4 py-3 text-right">0 đ</td>  
-                                </tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -886,7 +887,7 @@
             </div>
             
             <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ theo Vị trí quảng cáo (Waffle)</h2>
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân tích Doanh số trên Mục tiêu Campaign</h2>
                 <div id="waffle-chart-container" class="w-full bg-gray-50 border rounded-lg flex items-center justify-center min-h-[300px]">
                     <p class="text-gray-500">Biểu đồ sẽ được load ở đây</p>
                 </div>
@@ -946,6 +947,27 @@
                     <i data-feather="send" class="w-5 h-5"></i>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div id="drilldown-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden" onclick="closeDrilldownModal(event)">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+            
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 id="drilldown-modal-title" class="text-xl font-semibold text-gray-800">
+                    Chia nhỏ các chiều dữ liệu
+                </h3>
+                <button onclick="closeDrilldownModal(event)" class="text-gray-400 hover:text-gray-600">
+                    <i data-feather="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto">
+                <div id="drilldown-chart-container" class="w-full min-h-[400px]">
+                    <p class="text-gray-500">Đang tải dữ liệu drilldown...</p>
+                </div>
+            </div>
+
         </div>
     </div>
 

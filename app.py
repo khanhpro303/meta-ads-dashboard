@@ -2155,7 +2155,7 @@ def get_waffle_chart_data():
         # Tạo câu lệnh CASE
         # func.split_part
         label_case_statement = case(
-            (num_underscores >= 3, func.split_part(DimCampaign.name, '_', 3)), # 4+ yếu tố, lấy cái thứ 3
+            (num_underscores >= 3, func.split_part(DimCampaign.name, '_', 4)), # 4+ yếu tố, lấy cái thứ 4
             (num_underscores == 2, func.split_part(DimCampaign.name, '_', 3)), # 3 yếu tố, lấy cái thứ 3 (cuối)
             else_=DimCampaign.name # Fallback
         ).label('campaign_label')
