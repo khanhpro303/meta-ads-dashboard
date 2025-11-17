@@ -340,6 +340,9 @@
   .h-\[300px\] {
     height: 300px;
   }
+  .h-full {
+    height: 100%;
+  }
   .h-screen {
     height: 100vh;
   }
