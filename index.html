@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meta Ads Dashboard</title>
-    <link href="static/css/styles.css" rel="stylesheet">
+    <link href="../static/css/styles.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
     <link rel="icon" type="image/png" href="../static/images/favicon.ico">
@@ -914,8 +914,8 @@
         txtSelected: 'mục đã chọn'
     };
     </script>
-    <script src="static/js/multiselect-dropdown.js"></script>
-    <script src="static/js/main.js"></script>
+    <script src="../static/js/multiselect-dropdown.js"></script>
+    <script src="../static/js/main.js"></script>
     
     <button id="chat-bubble" class="fixed bottom-8 right-8 bg-blue-600 text-white w-16 h-16 rounded-full shadow-2xl flex items-center justify-center cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-110">
         <i data-feather="message-square" class="w-8 h-8"></i>
@@ -950,7 +950,7 @@
         </div>
     </div>
 
-    <div id="drilldown-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden" onclick="closeDrilldownModal(event)">
+    <div id="drilldown-modal" class="fixed inset-0 bg-gray-600/75 flex items-center justify-center p-4 z-50 hidden" onclick="closeDrilldownModal(event)">
         <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
             
             <div class="flex justify-between items-center p-4 border-b">

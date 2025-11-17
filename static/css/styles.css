@@ -635,8 +635,11 @@
   .bg-gray-200 {
     background-color: var(--color-gray-200);
   }
-  .bg-gray-600 {
-    background-color: var(--color-gray-600);
+  .bg-gray-600\/75 {
+    background-color: color-mix(in srgb, oklch(44.6% 0.03 256.802) 75%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-gray-600) 75%, transparent);
+    }
   }
   .bg-green-50 {
     background-color: var(--color-green-50);

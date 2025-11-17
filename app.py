@@ -2007,7 +2007,7 @@ def get_drilldown_chart_data():
             'campaign': (DimCampaign.name, DimCampaign.campaign_id, DimCampaign),
             'adset': (DimAdset.name, DimAdset.adset_id, DimAdset),
             'ad': (DimAd.name, DimAd.ad_id, DimAd),
-            'region': (DimRegion.name, DimRegion.region_id, DimRegion)
+            'region': (DimRegion.region_name, DimRegion.region_id, DimRegion)
         }
         
         if group_by_dimension not in dimension_column_map:
