@@ -2197,19 +2197,18 @@ def get_waffle_chart_data():
 
         fig = plt.figure(
             FigureClass=Waffle,
-            rows=7, # 7 hàng (tạo thành 7x14 = 98 ô, gần 100%)
-            columns=14,
-            values=data_dict, # pywaffle tự tính tỷ lệ trên raw data
-            # Chia giá trị cho 1 ô vuông
+            rows=7,
+            columns=25,
+            values=data_dict,
             block_arranging_style='snake',
             legend={
-                'loc': 'lower center', 
-                'bbox_to_anchor': (0.5, -0.2), # Đẩy legend xuống dưới
-                'ncol': min(len(data_dict), 3), # Tối đa 3 cột legend
+                'loc': 'upper left',
+                'bbox_to_anchor': (1, 1), # Vẫn giữ legend bên ngoài
+                'ncol': 1, # Legend 1 hàng
                 'framealpha': 0,
-                'fontsize': 10
+                'fontsize': 9
             },
-            figsize=(10, 5) # Kích thước (rộng, cao)
+            figsize=(12, 5)
         )
         
         # === 7. CHUYỂN BIỂU ĐỒ SANG BASE64 ===
