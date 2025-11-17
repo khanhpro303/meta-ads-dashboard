@@ -13,6 +13,12 @@ from sqlalchemy import func, select, and_, case
 import pandas as pd
 import folium
 import branca.colormap as cm
+import io
+import base64
+import matplotlib
+matplotlib.use('Agg') # Chuyển backend sang 'Agg' để chạy trên server
+import matplotlib.pyplot as plt
+from pywaffle import Waffle
 
 # Import các lớp từ database_manager
 from database_manager import (
@@ -2092,6 +2098,132 @@ def get_drilldown_chart_data():
     except Exception as e:
         logger.error(f"Lỗi khi lấy dữ liệu drill-down chart: {e}", exc_info=True)
         return jsonify({'error': 'Lỗi server nội bộ khi tạo biểu đồ drill-down.'}), 500
+    finally:
+        session.close()
+
+@app.route('/api/waffle_chart', methods=['POST'])
+def get_waffle_chart_data():
+    """
+    [MỚI] Lấy dữ liệu và tạo biểu đồ Waffle cho Purchase Value theo Campaign.
+    Label được xử lý theo logic string splitting.
+    """
+    if not plt or not Waffle:
+        return jsonify({'error': 'Thư viện Matplotlib/PyWaffle chưa được cài đặt trên server.'}), 500
+
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        campaign_ids = data.get('campaign_ids') 
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        # === 2. XÁC ĐỊNH KỲ HIỆN TẠI ===
+        start_date, end_date = None, None
+        today = datetime.today().date()
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            date_preset = 'last_month' # Fallback
+            start_date, end_date = _calculate_date_range(date_preset, today)
+
+        # === 3. XÂY DỰNG BỘ LỌC CHUNG ===
+        # Dùng bảng Demo
+        base_filters = [
+            DimCampaign.ad_account_id == account_id,
+            DimDate.full_date.between(start_date, end_date)
+        ]
+        if campaign_ids:
+            base_filters.append(FactPerformanceDemographic.campaign_id.in_(campaign_ids))
+        
+        # === 4. LOGIC XỬ LÝ LABEL (SQLAlchemy CASE) ===
+        # Đếm số lượng dấu gạch dưới '_'
+        num_underscores = (
+            func.length(DimCampaign.name) - 
+            func.length(func.replace(DimCampaign.name, '_', ''))
+        )
+        
+        # Tạo câu lệnh CASE
+        # func.split_part
+        label_case_statement = case(
+            (num_underscores >= 3, func.split_part(DimCampaign.name, '_', 3)), # 4+ yếu tố, lấy cái thứ 3
+            (num_underscores == 2, func.split_part(DimCampaign.name, '_', 3)), # 3 yếu tố, lấy cái thứ 3 (cuối)
+            else_=DimCampaign.name # Fallback
+        ).label('campaign_label')
+
+        # === 5. TRUY VẤN DỮ LIỆU ===
+        query = select(
+            label_case_statement,
+            func.sum(FactPerformanceDemographic.purchase_value).label('total_value')
+        ).join(
+            DimDate, FactPerformanceDemographic.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformanceDemographic.campaign_id == DimCampaign.campaign_id
+        ).where(
+            and_(*base_filters)
+        ).group_by(
+            label_case_statement
+        ).order_by(
+            func.sum(FactPerformanceDemographic.purchase_value).desc()
+        )
+        
+        results = session.execute(query).all()
+
+        if not results:
+            return jsonify({'error': 'Không có dữ liệu Purchase Value cho Waffle Chart.'}), 404
+
+        # === 6. TẠO BIỂU ĐỒ BẰNG PYWAFFLE ===
+        
+        # Chuyển đổi dữ liệu (và loại bỏ giá trị 0 hoặc âm)
+        data_dict = {
+            row.campaign_label: float(row.total_value) 
+            for row in results if row.total_value and row.total_value > 0
+        }
+
+        if not data_dict:
+             return jsonify({'error': 'Không có dữ liệu Purchase Value > 0.'}), 404
+
+        # Tính tổng để Waffle biết 1 ô vuông = bao nhiêu
+        total_value = sum(data_dict.values())
+
+        fig = plt.figure(
+            FigureClass=Waffle,
+            rows=7, # 7 hàng (tạo thành 7x14 = 98 ô, gần 100%)
+            columns=14,
+            values=data_dict, # pywaffle tự tính tỷ lệ trên raw data
+            # Chia giá trị cho 1 ô vuông
+            block_arranging_style='snake',
+            legend={
+                'loc': 'lower center', 
+                'bbox_to_anchor': (0.5, -0.2), # Đẩy legend xuống dưới
+                'ncol': min(len(data_dict), 3), # Tối đa 3 cột legend
+                'framealpha': 0,
+                'fontsize': 10
+            },
+            figsize=(10, 5) # Kích thước (rộng, cao)
+        )
+        
+        # === 7. CHUYỂN BIỂU ĐỒ SANG BASE64 ===
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close(fig) # Đóng figure để giải phóng bộ nhớ
+        
+        return jsonify({'image_base64': f'data:image/png;base64,{img_base64}'})
+
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo Waffle chart: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ khi tạo biểu đồ waffle.'}), 500
     finally:
         session.close()
 

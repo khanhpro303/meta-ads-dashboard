@@ -1704,8 +1704,7 @@ async function handleCDApplyFilters() {
     }
 
     try {
-        // Gọi song song 3 API
-        const [mapRes, performanceRes, ageGenderRes] = await Promise.all([
+        const [mapRes, performanceRes, ageGenderRes, waffleRes] = await Promise.all([
             fetch('/api/geo_map_data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1720,21 +1719,29 @@ async function handleCDApplyFilters() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(filters) 
+            }),
+            fetch('/api/waffle_chart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters)
             })
         ]);
 
         if (!mapRes.ok) { const err = await mapRes.json(); throw new Error(`Lỗi bản đồ: ${err.error}`); }
         if (!performanceRes.ok) { const err = await performanceRes.json(); throw new Error(`Lỗi bảng: ${err.error}`); }
         if (!ageGenderRes.ok) { const err = await ageGenderRes.json(); throw new Error(`Lỗi biểu đồ A/G: ${err.error}`); }
+        if (!waffleRes.ok) { const err = await waffleRes.json(); throw new Error(`Lỗi Waffle: ${err.error}`); }
 
         const mapData = await mapRes.json();
         const performanceData = await performanceRes.json();
         const ageGenderData = await ageGenderRes.json();
+        const waffleData = await waffleRes.json();
 
         // Render tất cả
         renderGeoMapData(mapData);
         renderCDPerformanceData(performanceData);
         renderAgeGenderChart(ageGenderData);
+        renderWaffleChart(waffleData);
 
     } catch (error) {
         console.error('Lỗi khi áp dụng bộ lọc CĐ:', error);
@@ -1984,5 +1991,38 @@ async function handleAgeGenderDrilldown(age, gender) {
     } catch (error) {
         console.error('Lỗi khi drilldown:', error);
         chartContainer.innerHTML = `<p class="text-red-500">Lỗi: ${error.message}</p>`;
+    }
+}
+
+// (Thay thế hàm renderWaffleChart cũ bằng hàm này)
+
+/**
+ * [MỚI] Render Waffle Chart
+ */
+async function renderWaffleChart(data) {
+    const container = document.getElementById('waffle-chart-container');
+    if (!container) return;
+        
+    try {
+        // 1. Kiểm tra xem data (kết quả JSON) có lỗi không
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // 2. Kiểm tra xem có ảnh base64 không
+        if (data.image_base64) {
+            container.innerHTML = `
+                <img src="${data.image_base64}" alt="Waffle Chart Purchase Value Campaign-based" 
+                     class="w-full h-auto object-contain">
+            `;
+        } else {
+            // Trường hợp API chạy thành công nhưng không tạo ra ảnh
+            throw new Error('Không nhận được dữ liệu ảnh từ server.');
+        }
+
+    } catch (error) {
+        console.error('Lỗi khi render Waffle Chart:', error);
+        // Hiển thị lỗi ngay tại container
+        container.innerHTML = `<p class="text-red-500 p-4">Lỗi: ${error.message}</p>`;
     }
 }
