@@ -70,11 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageDiv = document.createElement("div");
             if (sender === 'user') {
                 messageWrapper.classList.add("flex", "justify-end");
-                messageDiv.classList.add("bg-blue-600", "text-white", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                messageDiv.classList.add("bg-blue-600", "text-white", "p-3", "rounded-lg", "max-w-xs", "shadow-sm", "break-words");
                 messageDiv.textContent = text;
             } else if (sender === 'bot') {
                 messageWrapper.classList.add("flex", "justify-start");
-                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm", "break-words");
                 messageDiv.innerHTML = text.replace(/\n/g, '<br>');
             } else if (sender === 'loading') {
                 messageWrapper.classList.add("flex", "justify-start", "loading-indicator-wrapper");
@@ -729,7 +729,7 @@ function renderChartData(chartData) {
 
                 backgroundColor: 'rgba(109, 171, 243, 0.1)', // Màu fill nhạt
                 fill: true,
-                
+
                 yAxisID: 'y1', 
                 tension: 0.4
             }
