@@ -310,9 +310,6 @@
   .table {
     display: table;
   }
-  .h-3 {
-    height: calc(var(--spacing) * 3);
-  }
   .h-4 {
     height: calc(var(--spacing) * 4);
   }
@@ -331,14 +328,8 @@
   .h-16 {
     height: calc(var(--spacing) * 16);
   }
-  .h-40 {
-    height: calc(var(--spacing) * 40);
-  }
   .h-96 {
     height: calc(var(--spacing) * 96);
-  }
-  .h-\[300px\] {
-    height: 300px;
   }
   .h-full {
     height: 100%;
@@ -349,8 +340,11 @@
   .max-h-96 {
     max-height: calc(var(--spacing) * 96);
   }
-  .w-3 {
-    width: calc(var(--spacing) * 3);
+  .min-h-\[150px\] {
+    min-height: 150px;
+  }
+  .min-h-\[300px\] {
+    min-height: 300px;
   }
   .w-4 {
     width: calc(var(--spacing) * 4);
@@ -425,9 +419,6 @@
   }
   .flex-col {
     flex-direction: column;
-  }
-  .flex-wrap {
-    flex-wrap: wrap;
   }
   .items-center {
     align-items: center;
@@ -580,9 +571,6 @@
   .bg-blue-50 {
     background-color: var(--color-blue-50);
   }
-  .bg-blue-500 {
-    background-color: var(--color-blue-500);
-  }
   .bg-blue-600 {
     background-color: var(--color-blue-600);
   }
@@ -594,9 +582,6 @@
   }
   .bg-gray-200 {
     background-color: var(--color-gray-200);
-  }
-  .bg-gray-400 {
-    background-color: var(--color-gray-400);
   }
   .bg-green-50 {
     background-color: var(--color-green-50);

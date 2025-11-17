@@ -262,7 +262,10 @@ function initializeCharts() {
                 interaction: { mode: 'index', intersect: false },
                 elements: { line: { tension: 0.4 } }, // Giữ tension cho line chart
                 plugins: {
-                    legend: { display: false } 
+                    legend: { 
+                        display: true, 
+                        position: 'top'
+                    } 
                 },
                 scales: {
                     x: {
@@ -1115,58 +1118,59 @@ function renderFanpageMainChart(chartData) {
 
     fpMainChartInstance.data.labels = chartData.labels;
     
-    // --- [SỬA ĐỔI] ---
     fpMainChartInstance.data.datasets = [
         {
-            type: 'line', // <-- THÊM MỚI
-            label: 'New likes',
+            type: 'line', 
+            label: 'New likes', // <-- (Yêu cầu 2)
             data: chartData.datasets[0].data,
             borderColor: chartData.datasets[0].borderColor,
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
             fill: true,
             yAxisID: 'y',
-            tension: 0.4 // Đảm bảo đường cong
+            tension: 0.4
         },
         {
-            type: 'bar', // <-- THÊM MỚI
+            type: 'bar', 
             label: 'Page Impressions',
             data: chartData.datasets[1].data,
-            backgroundColor: chartData.datasets[1].borderColor, // Dùng màu đậm cho bar
+            backgroundColor: chartData.datasets[1].borderColor, 
             yAxisID: 'y1',
-            stack: 'bar_stack' // <-- THÊM MỚI: Đặt tên stack
+            stack: 'bar_stack'
         },
         {
-            type: 'bar', // <-- THÊM MỚI
+            type: 'bar', 
             label: 'Page Post Engagements',
             data: chartData.datasets[2].data,
-            backgroundColor: chartData.datasets[2].borderColor, // Dùng màu đậm cho bar
+            backgroundColor: chartData.datasets[2].borderColor, 
             yAxisID: 'y1',
-            stack: 'bar_stack' // <-- THÊM MỚI: Đặt tên stack
+            stack: 'bar_stack'
         }
     ];
 
-    // Cấu hình 2 trục Y (bật stacked cho y1)
+    // Cấu hình 2 trục Y
     fpMainChartInstance.options.scales = {
         x: { 
             grid: { display: false },
-            stacked: true // Đảm bảo trục X cũng stacked
+            stacked: true
         },
         y: { 
             type: 'linear', 
             display: true, 
             position: 'left',
             title: { display: true, text: 'New Likes' },
-            grid: { display: false }
+            grid: { display: false } // Giữ lưới của trục này ẩn
         },
         y1: { 
             type: 'linear', 
             display: true, 
             position: 'right', 
             title: { display: true, text: 'Impressions / Engagements' },
-            grid: { drawOnChartArea: false },
-            stacked: true // <-- THÊM MỚI: Bật stacked cho trục Y phụ
+            // [SỬA] (Yêu cầu 1) Xóa 'grid: { drawOnChartArea: false }'
+            // để các đường lưới ngang hiển thị
+            stacked: true 
         }
     };
+    
     fpMainChartInstance.update();
 }
 
