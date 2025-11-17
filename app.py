@@ -10,9 +10,17 @@ from matplotlib.dates import relativedelta
 import requests
 import re
 from sqlalchemy import func, select, and_, case
+import pandas as pd
+import folium
+import branca.colormap as cm
 
 # Import các lớp từ database_manager
-from database_manager import DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, FactPerformanceDemographic, DimFanpage, FactPageMetricsDaily, FactPostPerformance
+from database_manager import (
+    DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, 
+    FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, 
+    FactPerformanceDemographic, DimFanpage, FactPageMetricsDaily, 
+    FactPostPerformance, DimRegion, FactPerformanceRegion
+)
 from ai_agent import AIAgent
 
 DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
@@ -1055,9 +1063,9 @@ def get_fanpage_overview_data():
             start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
             end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
         else:
-            # Case 3: Fallback (Mặc định là last_30d nếu không có gì được gửi)
-            logger.warning(f"Không có date_preset ({date_preset}) hoặc ngày tùy chỉnh, mặc định 'last_30d'.")
-            date_preset = 'last_30d' # Gán lại để logic bên dưới chạy đúng
+            # Case 3: Fallback (Mặc định là last_month nếu không có gì được gửi)
+            logger.warning(f"Không có date_preset ({date_preset}) hoặc ngày tùy chỉnh, mặc định 'last_month'.")
+            date_preset = 'last_month' # Gán lại để logic bên dưới chạy đúng
             start_date, end_date = _calculate_date_range(date_preset, today)
         
         # Tính kỳ trước để so sánh
@@ -1391,6 +1399,168 @@ def get_fanpage_cover():
     except Exception as e:
         logger.error(f"Lỗi nội bộ khi lấy ảnh bìa: {e}", exc_info=True)
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
+
+# ======================================================================
+# API ENDPOINTS - CAMPAIGN ANALYSIS (GEO MAP)
+# ======================================================================
+
+@app.route('/api/geo_map_data', methods=['POST'])
+def get_geo_map_data():
+    """
+    Tạo và trả về HTML cho một bản đồ Folium dựa trên bộ lọc.
+    - Kích thước (radius) = impressions
+    - Màu sắc (color) = purchase_value
+    """
+    if not folium:
+        return jsonify({'error': 'Thư viện Folium chưa được cài đặt trên server.'}), 500
+
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC (Giống hệt các endpoint khác) ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        campaign_ids = data.get('campaign_ids')
+        adset_ids = data.get('adset_ids')
+        ad_ids = data.get('ad_ids')
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        # === 2. XÁC ĐỊNH KỲ HIỆN TẠI ===
+        start_date, end_date = None, None
+        today = datetime.today().date()
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            date_preset = 'last_month' # Fallback
+            start_date, end_date = _calculate_date_range(date_preset, today)
+
+        # === 3. TRUY VẤN DỮ LIỆU ===
+        logger.info(f"Đang truy vấn dữ liệu bản đồ từ {start_date} đến {end_date}...")
+        
+        query = select(
+            DimRegion.region_name,
+            DimRegion.latitude,
+            DimRegion.longitude,
+            func.sum(FactPerformanceRegion.impressions).label('impressions'),
+            func.sum(FactPerformanceRegion.purchase_value).label('purchase_value')
+        ).join(
+            FactPerformanceRegion, FactPerformanceRegion.region_id == DimRegion.region_id
+        ).join(
+            DimDate, FactPerformanceRegion.date_key == DimDate.date_key
+        ).join(
+            DimAd, FactPerformanceRegion.ad_id == DimAd.ad_id # Cần join để lọc account_id
+        ).filter(
+            DimAd.ad_account_id == account_id # Lọc theo tài khoản
+        ).filter(
+            DimDate.full_date.between(start_date, end_date) # Lọc theo ngày
+        ).filter(
+            DimRegion.latitude != None # Chỉ lấy region có tọa độ
+        )
+
+        # Áp dụng các bộ lọc ID nếu có
+        filters = []
+        if campaign_ids:
+            filters.append(FactPerformanceRegion.campaign_id.in_(campaign_ids))
+        if adset_ids:
+            filters.append(FactPerformanceRegion.adset_id.in_(adset_ids))
+        if ad_ids:
+            filters.append(FactPerformanceRegion.ad_id.in_(ad_ids))
+        
+        if filters:
+            query = query.where(and_(*filters))
+
+        query = query.group_by(
+            DimRegion.region_id, 
+            DimRegion.region_name, 
+            DimRegion.latitude, 
+            DimRegion.longitude
+        )
+
+        results = session.execute(query).all()
+
+        if not results:
+            logger.warning("Không tìm thấy dữ liệu Geo để vẽ bản đồ.")
+            # Trả về bản đồ trống
+            m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB positron')
+            return jsonify({'map_html': m._repr_html_()})
+
+        # === 4. CHUẨN BỊ DỮ LIỆU VỚI PANDAS ===
+        df = pd.DataFrame(results, columns=['region_name', 'latitude', 'longitude', 'impressions', 'purchase_value'])
+        df['impressions'] = pd.to_numeric(df['impressions'])
+        df['purchase_value'] = pd.to_numeric(df['purchase_value'])
+
+        # Chuẩn hóa (Normalize) impressions để làm bán kính (radius)
+        # Chuyển đổi sang thang đo từ 0-1
+        imp_min, imp_max = df['impressions'].min(), df['impressions'].max()
+        if imp_max == imp_min:
+            df['radius_normalized'] = 1.0 # Nếu tất cả giá trị bằng nhau
+        else:
+            df['radius_normalized'] = (df['impressions'] - imp_min) / (imp_max - imp_min)
+        
+        # Ánh xạ thang 0-1 sang thang pixel (ví dụ: 8px đến 40px)
+        min_radius, max_radius = 8, 40
+        df['radius'] = df['radius_normalized'].apply(lambda x: min_radius + (x * (max_radius - min_radius)))
+
+        # === 5. TẠO THANG MÀU (COLORMAP) CHO PURCHASE VALUE ===
+        pv_min, pv_max = df['purchase_value'].min(), df['purchase_value'].max()
+        
+        # Tạo thang màu (Vàng -> Cam -> Đỏ)
+        # Nếu max = min (chỉ có 1 giá trị), đặt 1 màu cố định
+        if pv_max == pv_min:
+             colormap = cm.linear.YlOrRd_09.scale(pv_min - 1, pv_max + 1)
+        else:
+             colormap = cm.linear.YlOrRd_09.scale(pv_min, pv_max)
+        
+        colormap.caption = 'Giá trị Mua hàng (VND)'
+
+        # === 6. TẠO BẢN ĐỒ FOLIUM ===
+        logger.info("Đang tạo bản đồ Folium...")
+        m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB positron')
+
+        for _, row in df.iterrows():
+            # Tạo popup HTML
+            popup_html = f"""
+            <div style="font-family: Inter, sans-serif; width: 200px;">
+                <h4 style="font-weight: 600; margin: 0 0 5px 0;">{row['region_name']}</h4>
+                <p style="margin: 2px 0;">
+                    <strong>Impressions:</strong> {row['impressions']:,.0f}
+                </p>
+                <p style="margin: 2px 0;">
+                    <strong>Purchase Value:</strong> {row['purchase_value']:,.0f} VND
+                </p>
+            </div>
+            """
+            
+            folium.Circle(
+                location=[row['latitude'], row['longitude']],
+                popup=popup_html,
+                radius=row['radius'] * 100, # Bán kính (Folium dùng mét, nên nhân lên)
+                fill=True,
+                fill_color=colormap(row['purchase_value']), # Màu dựa trên Purchase Value
+                color=colormap(row['purchase_value']), # Viền cùng màu
+                fill_opacity=0.6,
+                weight=1
+            ).add_to(m)
+
+        m.add_child(colormap) # Thêm thang màu (legend) vào bản đồ
+
+        # === 7. TRẢ VỀ HTML CỦA BẢN ĐỒ ===
+        map_html = m._repr_html_()
+        return jsonify({'map_html': map_html})
+
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo bản đồ Geo: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ khi tạo bản đồ.'}), 500
     finally:
         session.close()
 
