@@ -1564,5 +1564,536 @@ def get_geo_map_data():
     finally:
         session.close()
 
+@app.route('/api/camp_performance', methods=['POST'])
+def get_campaign_performance_data():
+    """
+    Lấy dữ liệu tổng hợp cho Panel Chiến dịch, bao gồm:
+    1. Bảng Giới tính (từ FactPerformanceDemographic)
+    2. Bảng Độ tuổi (từ FactPerformanceDemographic)
+    3. Bảng Địa lý (từ FactPerformanceRegion)
+    4. Biểu đồ tròn Địa lý (từ FactPerformanceRegion)
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        # Lấy danh sách campaign_ids (có thể rỗng)
+        campaign_ids = data.get('campaign_ids') 
+        
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        # === 2. XÁC ĐỊNH KỲ HIỆN TẠI (Copy từ endpoint trước) ===
+        start_date, end_date = None, None
+        today = datetime.today().date()
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            date_preset = 'last_month' # Fallback
+            start_date, end_date = _calculate_date_range(date_preset, today)
+
+        # === 3. XÂY DỰNG BỘ LỌC CHUNG ===
+        
+        # Bộ lọc cho bảng FactPerformanceDemographic
+        demo_filters = [
+            DimCampaign.ad_account_id == account_id,
+            DimDate.full_date.between(start_date, end_date)
+        ]
+        if campaign_ids:
+            demo_filters.append(FactPerformanceDemographic.campaign_id.in_(campaign_ids))
+
+        # Bộ lọc cho bảng FactPerformanceRegion
+        region_filters = [
+            DimCampaign.ad_account_id == account_id,
+            DimDate.full_date.between(start_date, end_date)
+        ]
+        if campaign_ids:
+            region_filters.append(FactPerformanceRegion.campaign_id.in_(campaign_ids))
+
+        # === 4. TRUY VẤN DỮ LIỆU ===
+        
+        # --- Query 1: Bảng Giới tính (gender-table-body) ---
+        gender_query = select(
+            FactPerformanceDemographic.gender,
+            func.sum(FactPerformanceDemographic.impressions).label('impressions'),
+            func.sum(FactPerformanceDemographic.clicks).label('clicks'),
+            func.sum(FactPerformanceDemographic.purchase_value).label('purchase_value')
+        ).join(
+            DimDate, FactPerformanceDemographic.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformanceDemographic.campaign_id == DimCampaign.campaign_id
+        ).where(
+            and_(*demo_filters)
+        ).group_by(
+            FactPerformanceDemographic.gender
+        ).order_by(
+            func.sum(FactPerformanceDemographic.purchase_value).desc()
+        )
+        
+        gender_results = session.execute(gender_query).all()
+        gender_table = [
+            {
+                'gender': row.gender or 'Unknown',
+                'impressions': row.impressions or 0,
+                'clicks': row.clicks or 0,
+                'purchase_value': row.purchase_value or 0
+            } for row in gender_results
+        ]
+
+        # --- Query 2: Bảng Độ tuổi (age-table-body) ---
+        age_query = select(
+            FactPerformanceDemographic.age,
+            func.sum(FactPerformanceDemographic.impressions).label('impressions'),
+            func.sum(FactPerformanceDemographic.clicks).label('clicks'),
+            func.sum(FactPerformanceDemographic.purchase_value).label('purchase_value')
+        ).join(
+            DimDate, FactPerformanceDemographic.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformanceDemographic.campaign_id == DimCampaign.campaign_id
+        ).where(
+            and_(*demo_filters)
+        ).group_by(
+            FactPerformanceDemographic.age
+        ).order_by(
+            FactPerformanceDemographic.age.asc()
+        )
+        
+        age_results = session.execute(age_query).all()
+        age_table = [
+            {
+                'age': row.age or 'Unknown',
+                'impressions': row.impressions or 0,
+                'clicks': row.clicks or 0,
+                'purchase_value': row.purchase_value or 0
+            } for row in age_results
+        ]
+
+        # --- Query 3: Bảng Địa lý (geo-table-body) ---
+        cpa_case = case(
+            (func.sum(FactPerformanceRegion.purchases) == 0, 0),
+            else_=(func.sum(FactPerformanceRegion.spend) / func.sum(FactPerformanceRegion.purchases))
+        ).label('cpa')
+
+        geo_query = select(
+            DimRegion.region_name,
+            func.sum(FactPerformanceRegion.spend).label('spend'),
+            func.sum(FactPerformanceRegion.purchases).label('purchases'),
+            cpa_case
+        ).join(
+            DimRegion, FactPerformanceRegion.region_id == DimRegion.region_id
+        ).join(
+            DimDate, FactPerformanceRegion.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformanceRegion.campaign_id == DimCampaign.campaign_id
+        ).where(
+            and_(*region_filters)
+        ).group_by(
+            DimRegion.region_name
+        ).order_by(
+            func.sum(FactPerformanceRegion.spend).desc()
+        )
+        
+        geo_results = session.execute(geo_query).all()
+        geo_table = [
+            {
+                'region_name': row.region_name or 'Unknown',
+                'spend': row.spend or 0,
+                'purchases': row.purchases or 0,
+                'cpa': row.cpa or 0
+            } for row in geo_results
+        ]
+
+        # --- Query 4: Biểu đồ tròn Địa lý (region-pie-chart) ---
+        # (Sử dụng lại kết quả từ geo_table)
+        
+        labels = []
+        data = []
+        
+        if geo_table:
+            total_spend = sum(row['spend'] for row in geo_table)
+            others_spend = 0
+            
+            if total_spend > 0:
+                for row in geo_table:
+                    percentage = row['spend'] / total_spend
+                    if percentage <= 0.10:
+                        others_spend += row['spend']
+                    else:
+                        labels.append(row['region_name'])
+                        data.append(row['spend'])
+                
+                if others_spend > 0:
+                    labels.append('Khác (<= 10%)')
+                    data.append(others_spend)
+
+        # Tự động tạo dải màu (giống hàm get_breakdown_chart_data)
+        num_labels = len(labels)
+        colors = [f'hsl({(i * 360 / num_labels) % 360}, 70%, 60%)' for i in range(num_labels)]
+
+        geo_pie_chart = {
+            'labels': labels,
+            'datasets': [
+                {
+                    'data': data,
+                    'backgroundColor': colors,
+                    'hoverBackgroundColor': colors
+                }
+            ]
+        }
+
+        # === 5. TỔNG HỢP VÀ TRẢ VỀ ===
+        response_data = {
+            'gender_table': gender_table,
+            'age_table': age_table,
+            'geo_table': geo_table,
+            'geo_pie_chart': geo_pie_chart
+        }
+        
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu Panel Chiến dịch: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ khi tạo dữ liệu chiến dịch.'}), 500
+    finally:
+        session.close()
+
+# (Dán vào cuối file app.py, ngay trước if __name__ == '__main__':)
+
+@app.route('/api/age_gender_chart', methods=['POST'])
+def get_age_gender_chart_data():
+    """
+    Lấy dữ liệu cho biểu đồ cột đôi (grouped bar):
+    - Trục X: Độ tuổi (Age)
+    - Trục Y: Impressions
+    - Nhóm (Series): Giới tính (Gender)
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC (Giống các hàm khác) ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        campaign_ids = data.get('campaign_ids') 
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+        
+        # === 2. XÁC ĐỊNH KỲ HIỆN TẠI ===
+        start_date, end_date = None, None
+        today = datetime.today().date()
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            date_preset = 'last_month' # Fallback
+            start_date, end_date = _calculate_date_range(date_preset, today)
+
+        # === 3. XÂY DỰNG BỘ LỌC CHUNG ===
+        demo_filters = [
+            DimCampaign.ad_account_id == account_id,
+            DimDate.full_date.between(start_date, end_date)
+        ]
+        if campaign_ids:
+            demo_filters.append(FactPerformanceDemographic.campaign_id.in_(campaign_ids))
+
+        # === 4. TRUY VẤN DỮ LIỆU GỐC (Dạng "Long") ===
+        # Lấy (Age, Gender, Impressions)
+        query = select(
+            FactPerformanceDemographic.age,
+            FactPerformanceDemographic.gender,
+            func.sum(FactPerformanceDemographic.impressions).label('impressions')
+        ).join(
+            DimDate, FactPerformanceDemographic.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformanceDemographic.campaign_id == DimCampaign.campaign_id
+        ).where(
+            and_(*demo_filters)
+        ).group_by(
+            FactPerformanceDemographic.age,
+            FactPerformanceDemographic.gender
+        ).order_by(
+            FactPerformanceDemographic.age.asc(),
+            FactPerformanceDemographic.gender.asc()
+        )
+        
+        results = session.execute(query).all()
+
+        if not results:
+            return jsonify({'labels': [], 'datasets': []}) # Trả về rỗng
+
+        # === 5. "PIVOT" DỮ LIỆU (Chuyển từ "Long" sang "Wide" cho Chart.js) ===
+        
+        data_pivot = {} # Cấu trúc: { "18-24": {"female": 100, "male": 110}, "25-34": ... }
+        all_ages_set = set()
+        all_genders_set = set()
+
+        for row in results:
+            age = row.age or 'Unknown'
+            gender = row.gender or 'Unknown'
+            impressions = row.impressions or 0
+            
+            all_ages_set.add(age)
+            all_genders_set.add(gender)
+            
+            if age not in data_pivot:
+                data_pivot[age] = {}
+            
+            data_pivot[age][gender] = impressions
+
+        # Sắp xếp các nhãn (Age)
+        def age_sort_key(age_str):
+            if age_str == 'Unknown':
+                return 99
+            match = re.match(r'(\d+)', age_str) # Lấy số đầu tiên
+            if match:
+                return int(match.group(1))
+            return 98
+            
+        sorted_labels = sorted(list(all_ages_set), key=age_sort_key)
+        
+        # Sắp xếp các nhóm (Gender)
+        sorted_genders = sorted(list(all_genders_set)) 
+        
+        # Dải màu cho các thanh bar (lam, hồng, xám, v.v.)
+        colors = ['#3b82f6', '#ec4899', '#6b7280', '#eab308', '#14b8a6']
+
+        # Xây dựng các dataset
+        datasets = []
+        for i, gender in enumerate(sorted_genders):
+            dataset_data = []
+            for age_label in sorted_labels:
+                # Lấy giá trị impression, nếu không có thì mặc định là 0
+                value = data_pivot.get(age_label, {}).get(gender, 0)
+                dataset_data.append(value)
+            
+            datasets.append({
+                'label': gender.capitalize(),
+                'data': dataset_data,
+                'backgroundColor': colors[i % len(colors)] # Chọn màu xoay vòng
+            })
+            
+        chart_data = {
+            'labels': sorted_labels,
+            'datasets': datasets
+        }
+        
+        return jsonify(chart_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu Age/Gender Chart: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ khi tạo biểu đồ.'}), 500
+    finally:
+        session.close()
+
+@app.route('/api/drilldown_chart', methods=['POST'])
+def get_drilldown_chart_data():
+    """
+    Endpoint cho các biểu đồ drill-down (Top 5).
+    
+    Endpoint này sẽ trả về Top 5 của một 'dimension' (ví dụ: 'campaign'),
+    được xếp hạng bởi một 'primary_metric' (ví dụ: 'impressions'),
+    và hiển thị một 'secondary_metric' (ví dụ: 'purchase_value') dưới dạng line.
+    
+    Tất cả được lọc bởi các filter chính VÀ các filter drill-down (ví dụ: age, gender).
+    """
+    session = db_manager.SessionLocal()
+    try:
+        data = request.get_json()
+        
+        # === 1. LẤY BỘ LỌC CHÍNH ===
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
+        
+        campaign_ids = data.get('campaign_ids') 
+        start_date_input = data.get('start_date')
+        end_date_input = data.get('end_date')
+        date_preset = data.get('date_preset')
+
+        # === 2. LẤY THAM SỐ DRILL-DOWN ===
+        # (Ví dụ: 'campaign', 'adset', hoặc 'ad')
+        group_by_dimension = data.get('group_by_dimension', 'campaign') 
+        
+        # (Ví dụ: 'impressions')
+        primary_metric = data.get('primary_metric', 'impressions')
+        
+        # (Ví dụ: 'purchase_value')
+        secondary_metric = data.get('secondary_metric', 'purchase_value') 
+        
+        # (Ví dụ: {'age': '18-24', 'gender': 'male'})
+        drilldown_filters = data.get('drilldown_filters', {}) 
+
+        # === 3. XÁC ĐỊNH KỲ HIỆN TẠI ===
+        start_date, end_date = None, None
+        today = datetime.today().date()
+        if date_preset and date_preset in DATE_PRESET:
+            start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
+        elif start_date_input and end_date_input:
+            start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
+        else:
+            date_preset = 'last_month' # Fallback
+            start_date, end_date = _calculate_date_range(date_preset, today)
+
+        # === 4. XÁC ĐỊNH BẢNG VÀ CỘT ĐỂ TRUY VẤN ===
+        # Logic này xác định xem nên dùng bảng Fact nào
+        
+        target_fact_table = None
+        dim_joins = []
+        base_filters = [
+            DimDate.full_date.between(start_date, end_date)
+        ]
+
+        # Xác định Bảng Fact dựa trên các filter drill-down
+        if 'age' in drilldown_filters or 'gender' in drilldown_filters:
+            target_fact_table = FactPerformanceDemographic
+            dim_joins.append((DimCampaign, FactPerformanceDemographic.campaign_id == DimCampaign.campaign_id))
+            base_filters.append(DimCampaign.ad_account_id == account_id)
+            if 'age' in drilldown_filters:
+                base_filters.append(FactPerformanceDemographic.age == drilldown_filters['age'])
+            if 'gender' in drilldown_filters:
+                base_filters.append(FactPerformanceDemographic.gender == drilldown_filters['gender'])
+                
+        elif 'region' in drilldown_filters:
+            target_fact_table = FactPerformanceRegion
+            dim_joins.append((DimCampaign, FactPerformanceRegion.campaign_id == DimCampaign.campaign_id))
+            dim_joins.append((DimRegion, FactPerformanceRegion.region_id == DimRegion.region_id))
+            base_filters.append(DimCampaign.ad_account_id == account_id)
+            base_filters.append(DimRegion.region_name == drilldown_filters['region'])
+        
+        else:
+            # Fallback về bảng Platform (hoặc bảng mặc định của bạn)
+            target_fact_table = FactPerformancePlatform
+            dim_joins.append((DimCampaign, FactPerformancePlatform.campaign_id == DimCampaign.campaign_id))
+            base_filters.append(DimCampaign.ad_account_id == account_id)
+
+        # Áp dụng bộ lọc campaign (nếu có)
+        if campaign_ids:
+            base_filters.append(target_fact_table.campaign_id.in_(campaign_ids))
+
+        # === 5. XÁC ĐỊNH DIMENSION VÀ METRICS ĐỂ QUERY ===
+        
+        # Mapping tên metric sang cột SQLAlchemy
+        metric_column_map = {
+            'impressions': func.sum(target_fact_table.impressions),
+            'purchase_value': func.sum(target_fact_table.purchase_value),
+            'spend': func.sum(target_fact_table.spend),
+            'clicks': func.sum(target_fact_table.clicks),
+            'purchases': func.sum(target_fact_table.purchases)
+        }
+
+        # Mapping tên dimension sang cột SQLAlchemy
+        dimension_column_map = {
+            'campaign': (DimCampaign.name, DimCampaign.campaign_id, DimCampaign),
+            'adset': (DimAdset.name, DimAdset.adset_id, DimAdset),
+            'ad': (DimAd.name, DimAd.ad_id, DimAd),
+            'region': (DimRegion.name, DimRegion.region_id, DimRegion)
+        }
+        
+        if group_by_dimension not in dimension_column_map:
+            return jsonify({'error': f"Dimension '{group_by_dimension}' không được hỗ trợ."}), 400
+        if primary_metric not in metric_column_map:
+            return jsonify({'error': f"Metric chính '{primary_metric}' không được hỗ trợ."}), 400
+        if secondary_metric not in metric_column_map:
+            return jsonify({'error': f"Metric phụ '{secondary_metric}' không được hỗ trợ."}), 400
+            
+        # Lấy cột dimension
+        dim_name_col, dim_id_col, dim_model = dimension_column_map[group_by_dimension]
+        
+        # Lấy cột metric
+        primary_metric_agg = metric_column_map[primary_metric].label('primary_metric')
+        secondary_metric_agg = metric_column_map[secondary_metric].label('secondary_metric')
+
+        # === 6. XÂY DỰNG VÀ THỰC THI TRUY VẤN ===
+        
+        query = select(
+            dim_name_col.label('dimension_label'),
+            primary_metric_agg,
+            secondary_metric_agg
+        ).join(
+            DimDate, target_fact_table.date_key == DimDate.date_key
+        )
+        
+        # Thêm các join cần thiết (ví dụ: DimCampaign)
+        for join_model, join_condition in dim_joins:
+            query = query.join(join_model, join_condition)
+            
+        # Join với bảng Dimension mà chúng ta đang group by (nếu nó chưa được join)
+        # (Ví dụ: nếu group by 'adset', chúng ta cần join Fact -> Adset)
+        if dim_model not in [j[0] for j in dim_joins]:
+            fk_on_fact = getattr(target_fact_table, f"{group_by_dimension}_id")
+            query = query.join(dim_model, fk_on_fact == dim_id_col)
+
+        # Áp dụng filter, group by, order, và limit
+        query = query.where(
+            and_(*base_filters)
+        ).group_by(
+            dim_id_col,
+            dim_name_col
+        ).order_by(
+            primary_metric_agg.desc().nullslast() # Sắp xếp theo metric chính
+        ).limit(5) # Top 5
+
+        logger.info(f"Đang thực thi truy vấn drill-down: {str(query)}")
+        results = session.execute(query).all()
+
+        if not results:
+            return jsonify({'labels': [], 'datasets': []})
+
+        # === 7. ĐỊNH DẠNG KẾT QUẢ (COMBO CHART) ===
+        labels = []
+        bar_data = []  # Metric chính (ví dụ: Impressions)
+        line_data = [] # Metric phụ (ví dụ: Purchase Value)
+        
+        for row in results:
+            labels.append(row.dimension_label or 'Không xác định')
+            bar_data.append(float(row.primary_metric) if row.primary_metric is not None else 0)
+            line_data.append(float(row.secondary_metric) if row.secondary_metric is not None else 0)
+
+        chart_data = {
+            'labels': labels,
+            'datasets': [
+                {
+                    'type': 'bar',
+                    'label': primary_metric.replace('_', ' ').capitalize(),
+                    'data': bar_data,
+                    'backgroundColor': '#3b82f6', # Màu lam
+                    'yAxisID': 'y' # Trục Y chính
+                },
+                {
+                    'type': 'line',
+                    'label': secondary_metric.replace('_', ' ').capitalize(),
+                    'data': line_data,
+                    'borderColor': '#ec4899', # Màu hồng
+                    'backgroundColor': 'rgba(236, 72, 153, 0.1)',
+                    'fill': True,
+                    'tension': 0.4,
+                    'yAxisID': 'y1' # Trục Y phụ
+                }
+            ]
+        }
+        
+        return jsonify(chart_data)
+
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy dữ liệu drill-down chart: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ khi tạo biểu đồ drill-down.'}), 500
+    finally:
+        session.close()
+
 if __name__ == '__main__':
     app.run(debug=True)

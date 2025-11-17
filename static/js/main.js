@@ -22,6 +22,16 @@ let fpMainChartInstance = null;
 let elFpFilterPage, elFpFilterDate, elFpBtnApply, elFpBtnRefresh, elFpCustomDateRange;
 let elFpDateFrom, elFpDateTo;
 
+// [MỚI] Biến cho Panel Chiến dịch (Campaign Dashboard)
+let elPanelChienDich;
+let elCdFilterAccount, elCdFilterTime, elCdFilterCampaigns;
+let elCdBtnApply;
+let elCdCustomDateRange, elCdDateFrom, elCdDateTo;
+let cdAgeGenderChartInstance = null;
+let cdRegionPieChartInstance = null;
+let cdDrilldownChartInstance = null; // Biểu đồ khi click drilldown
+let cdMapLoaded = false; // Biến cờ để chỉ tải bản đồ 1 lần
+
 
 // --- HÀM KHỞI CHẠY KHI TRANG ĐƯỢC TẢI ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -128,16 +138,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     } 
 
-    // --- PHẦN 3: LOGIC CHUYỂN PANEL (GIỮ NGUYÊN) ---
+    // --- PHẦN 3: LOGIC CHUYỂN PANEL ---
     console.log("Khởi tạo logic chuyển panel...");
+    
     const navLinks = {
         'nav-tong-quan': document.getElementById('nav-tong-quan'),
-        'nav-fanpage-overview': document.getElementById('nav-fanpage-overview')
+        'nav-fanpage-overview': document.getElementById('nav-fanpage-overview'),
+        'nav-chien-dich': document.getElementById('nav-chien-dich'), 
+        'nav-huong-dan': document.getElementById('nav-huong-dan'), 
+        'nav-cai-dat': document.getElementById('nav-cai-dat')
     };
+
     const panels = {
         'panel-tong-quan': document.getElementById('panel-tong-quan'),
-        'panel-fanpage-overview': document.getElementById('panel-fanpage-overview')
+        'panel-fanpage-overview': document.getElementById('panel-fanpage-overview'),
+        'panel-chien-dich': document.getElementById('panel-chien-dich'), 
+        'panel-huong-dan': document.getElementById('panel-huong-dan'), 
+        'panel-cai-dat': document.getElementById('panel-cai-dat')
     };
+
     const allNavLinks = document.querySelectorAll('.nav-link');
 
     const setActiveLink = (clickedLink) => {
@@ -174,7 +193,34 @@ document.addEventListener('DOMContentLoaded', () => {
             showPanel('panel-fanpage-overview');
         });
     }
-    showPanel('panel-tong-quan');
+
+    if (navLinks['nav-chien-dich']) {
+        navLinks['nav-chien-dich'].addEventListener('click', (e) => {
+            e.preventDefault();
+            setActiveLink(navLinks['nav-chien-dich']);
+            showPanel('panel-chien-dich');
+            
+            // Tự động tải Account cho dropdown của Panel CĐ (nếu chưa)
+            loadCDAccountDropdown();
+        });
+    }
+
+    if (navLinks['nav-huong-dan']) {
+        navLinks['nav-huong-dan'].addEventListener('click', (e) => {
+            e.preventDefault();
+            setActiveLink(navLinks['nav-huong-dan']);
+            showPanel('panel-huong-dan');
+        });
+    }
+
+    if (navLinks['nav-cai-dat']) {
+        navLinks['nav-cai-dat'].addEventListener('click', (e) => {
+            e.preventDefault();
+            setActiveLink(navLinks['nav-cai-dat']);
+            showPanel('panel-cai-dat');
+        });
+    }
+    showPanel('panel-tong-quan'); // Bắt đầu ở Tổng quan
 
     // --- PHẦN 4: LOGIC RIÊNG CỦA FANPAGE (MỚI) ---
     console.log("Khởi tạo logic cho Panel Fanpage...");
@@ -281,7 +327,70 @@ function initializeCharts() {
                 }
             }
         });
-        console.log("Đã khởi tạo 'fpMainChartInstance' (dạng mixed bar/line).");
+    }
+    // [MỚI] Khởi tạo biểu đồ cho Panel Chiến dịch
+    const ctxAgeGender = document.getElementById('sex-age-allocate');
+    if (ctxAgeGender) {
+        cdAgeGenderChartInstance = new Chart(ctxAgeGender.getContext('2d'), {
+            type: 'bar', // Grouped bar chart
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            // Thêm tiêu đề cho tooltip (e.g., "Male - 18-24")
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                const age = item.label;
+                                const gender = item.dataset.label;
+                                return `${gender} | ${age}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: false, grid: { display: false } },
+                    y: { stacked: false, beginAtZero: true, title: { display: true, text: 'Impressions' } }
+                },
+                // [MỚI] Thêm sự kiện onClick để drilldown
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const chart = cdAgeGenderChartInstance;
+                        const elementIndex = elements[0].index;
+                        const datasetIndex = elements[0].datasetIndex;
+                        
+                        const age = chart.data.labels[elementIndex];
+                        const gender = chart.data.datasets[datasetIndex].label.toLowerCase(); // 'Female' -> 'female'
+                        
+                        // Gọi hàm drilldown
+                        handleAgeGenderDrilldown(age, gender);
+                    }
+                }
+            }
+        });
+    }
+
+    const ctxRegionPie = document.getElementById('region-pie-chart');
+    if (ctxRegionPie) {
+        cdRegionPieChartInstance = new Chart(ctxRegionPie.getContext('2d'), {
+            type: 'doughnut',
+            data: { labels: ['Chưa tải'], datasets: [{ data: [1] }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { 
+                        position: 'right',
+                        labels: {
+                            boxWidth: 20
+                        }
+                    } 
+                }
+            }
+        });
     }
 }
 
@@ -319,16 +428,35 @@ function initializeSelects() {
     elFpFilterPage = document.getElementById('fp-filter-fanpage');
     elFpFilterDate = document.getElementById('fp-filter-date');
     elFpBtnApply = document.getElementById('fp-btn-apply');
-    elFpBtnRefresh = document.getElementById('fp-btn-refresh'); // <-- THÊM MỚI
-    elFpCustomDateRange = document.getElementById('fp-custom-date-range'); // <-- THÊM MỚI
-    elFpDateFrom = document.getElementById('fp-date-from'); // <-- THÊM MỚI
-    elFpDateTo = document.getElementById('fp-date-to'); // <-- THÊM MỚI
+    elFpBtnRefresh = document.getElementById('fp-btn-refresh'); 
+    elFpCustomDateRange = document.getElementById('fp-custom-date-range'); 
+    elFpDateFrom = document.getElementById('fp-date-from'); 
+    elFpDateTo = document.getElementById('fp-date-to'); 
 
     // Vô hiệu hóa bộ lọc fanpage ban đầu
     if (elFpFilterPage) elFpFilterPage.disabled = true;
     if (elFpFilterDate) elFpFilterDate.disabled = true;
     if (elFpBtnApply) elFpBtnApply.disabled = true;
-    if (elFpBtnRefresh) elFpBtnRefresh.disabled = true; // <-- THÊM MỚI
+    if (elFpBtnRefresh) elFpBtnRefresh.disabled = true;
+
+    // [MỚI] Khởi tạo biến cho Panel Chiến dịch
+    elPanelChienDich = document.getElementById('panel-chien-dich');
+    elCdFilterAccount = document.getElementById('cd-filter-ad-account');
+    elCdFilterTime = document.getElementById('cd-filter-time');
+    elCdFilterCampaigns = document.getElementById('cd-filter-campaigns');
+    elCdBtnApply = document.getElementById('cd-btn-apply-filters');
+    elCdCustomDateRange = document.getElementById('cd-custom-date-range');
+    elCdDateFrom = document.getElementById('cd-date-from');
+    elCdDateTo = document.getElementById('cd-date-to');
+
+    // Vô hiệu hóa bộ lọc CĐ ban đầu
+    if (elCdFilterAccount) elCdFilterAccount.disabled = true;
+    if (elCdFilterTime) elCdFilterTime.disabled = true;
+    if (elCdFilterCampaigns) {
+        elCdFilterCampaigns.disabled = true;
+        elCdFilterCampaigns.loadOptions();
+    }
+    if (elCdBtnApply) elCdBtnApply.disabled = true;
 }
 
 // --- GẮN CÁC BỘ LẮNG NGHE SỰ KIỆN ---
@@ -393,6 +521,28 @@ function setupEventListeners() {
     }
     if (elFpBtnRefresh) {
         elFpBtnRefresh.addEventListener('click', handleFanpageRefreshData); // <-- THÊM MỚI
+    }
+    // [MỚI] Gán sự kiện cho Panel Chiến dịch
+    if (elCdFilterAccount) {
+        elCdFilterAccount.addEventListener('change', triggerCDCampaignLoad);
+    }
+    if (elCdFilterTime) {
+        elCdFilterTime.addEventListener('change', (e) => {
+            const value = e.currentTarget.value;
+            if (value === 'custom') {
+                elCdCustomDateRange.classList.remove('hidden');
+                resetDropdown(elCdFilterCampaigns);
+            } else {
+                elCdCustomDateRange.classList.add('hidden');
+                triggerCDCampaignLoad();
+            }
+        });
+    }
+    if (elCdDateFrom) elCdDateFrom.addEventListener('change', triggerCDCampaignLoad);
+    if (elCdDateTo) elCdDateTo.addEventListener('change', triggerCDCampaignLoad);
+    
+    if (elCdBtnApply) {
+        elCdBtnApply.addEventListener('click', handleCDApplyFilters);
     }
 }
 
@@ -1385,5 +1535,454 @@ async function loadAndRenderFanpageCover(page_id) {
         placeholder.innerHTML = `
             <span class="text-gray-400 text-sm">Không có ảnh bìa</span>
         `;
+    }
+}
+
+// ======================================================================
+// --- [MỚI] CÁC HÀM LOGIC CHO PANEL CHIẾN DỊCH ---
+// ======================================================================
+
+/**
+ * [MỚI] Lấy tham số ngày tháng từ bộ lọc Panel Chiến dịch
+ */
+function getCDDateFilterParams() {
+    let date_preset = elCdFilterTime.value;
+    let start_date = elCdDateFrom.value;
+    let end_date = elCdDateTo.value;
+    const today = new Date().toISOString().split('T')[0];
+
+    if (date_preset !== 'custom') {
+        start_date = null; 
+    } else {
+        if (!start_date || !end_date) {
+            showNotification('Tùy chỉnh: Vui lòng chọn Từ ngày và Đến ngày!', 'error');
+            return null;
+        }
+        date_preset = null;
+    }
+
+    if (!end_date) {
+        end_date = today;
+    }
+
+    if (date_preset) {
+        return { date_preset: date_preset, end_date: end_date };
+    } else {
+        return { date_preset: null, start_date: start_date, end_date: end_date };
+    }
+}
+
+/**
+ * [MỚI] Lấy bộ lọc đầy đủ từ Panel Chiến dịch
+ */
+function getCDFilterPayload() {
+    const filters = {};
+    filters.account_id = elCdFilterAccount.value;
+    if (!filters.account_id) {
+        showNotification('Vui lòng chọn một Tài khoản Quảng cáo.', 'error');
+        return null;
+    }
+    const dateParams = getCDDateFilterParams();
+    if (dateParams === null) { return null; }
+    filters.date_preset = dateParams.date_preset;
+    filters.start_date = dateParams.start_date;
+    filters.end_date = dateParams.end_date;
+    
+    const campaignIds = Array.from(elCdFilterCampaigns.selectedOptions).map(o => o.value);
+    if (campaignIds.length > 0) { 
+        filters.campaign_ids = campaignIds; 
+    }
+    
+    return filters;
+}
+
+/**
+ * [MỚI] Tải danh sách Account cho Panel Chiến dịch
+ */
+async function loadCDAccountDropdown() {
+    if (!elCdFilterAccount || elCdFilterAccount.options.length > 1) {
+        // Chỉ tải nếu dropdown rỗng (chưa tải lần nào)
+        return; 
+    }
+
+    setDropdownLoading(elCdFilterAccount, 'Đang tải tài khoản...');
+    try {
+        const response = await fetch('/api/accounts');
+        if (!response.ok) throw new Error('Lỗi mạng khi tải tài khoản');
+        const accounts = await response.json();
+        
+        elCdFilterAccount.innerHTML = ''; // Xóa 'Đang tải...'
+        
+        accounts.forEach(c => {
+            const idString = String(c.id);
+            const lastFourDigits = idString.slice(-4);
+            const newText = `${c.name} (${lastFourDigits})`;
+            const option = new Option(newText, c.id);
+            elCdFilterAccount.appendChild(option);
+        });
+        
+        // Mở khóa bộ lọc
+        elCdFilterAccount.disabled = false;
+        elCdFilterTime.disabled = false;
+        elCdBtnApply.disabled = false;
+
+        if (accounts.length > 0) {
+            elCdFilterAccount.value = accounts[0].id;
+            // Kích hoạt tải campaign
+            elCdFilterAccount.dispatchEvent(new Event('change'));
+        }
+    } catch (error) {
+        console.error('Lỗi tải tài khoản CĐ:', error);
+        setDropdownLoading(elCdFilterAccount, 'Lỗi tải tài khoản');
+    }
+}
+
+/**
+ * [MỚI] Kích hoạt tải Campaign cho Panel CĐ
+ */
+function triggerCDCampaignLoad() {
+    const accountId = elCdFilterAccount.value;
+    const dateParams = getCDDateFilterParams();
+    
+    resetDropdown(elCdFilterCampaigns);
+    
+    if (accountId && dateParams) {
+        loadCDCampaignDropdown(accountId, dateParams);
+    }
+}
+
+/**
+ * [MỚI] Tải danh sách Campaign cho Panel CĐ
+ */
+async function loadCDCampaignDropdown(accountId, dateParams) {
+    setDropdownLoading(elCdFilterCampaigns, 'Đang tải chiến dịch...');
+    try {
+        const response = await fetch('/api/campaigns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId, ...dateParams })
+        });
+        if (!response.ok) throw new Error('Lỗi mạng');
+        const campaigns = await response.json();
+        
+        elCdFilterCampaigns.innerHTML = '';
+        campaigns.forEach(c => {
+            const option = new Option(c.name, c.campaign_id);
+            elCdFilterCampaigns.appendChild(option);
+        });
+        
+        elCdFilterCampaigns.disabled = false;
+        elCdFilterCampaigns.loadOptions(); // Tải lại multiselect
+    } catch (error) {
+        console.error('Lỗi tải chiến dịch CĐ:', error);
+        setDropdownLoading(elCdFilterCampaigns, 'Lỗi tải chiến dịch...');
+    }
+}
+
+
+/**
+ * [MỚI] Xử lý sự kiện khi nhấn nút "Áp dụng" trên panel Chiến dịch
+ */
+async function handleCDApplyFilters() {
+    const button = elCdBtnApply;
+    const originalText = button.querySelector('span').innerText;
+    setButtonLoading(button, 'Đang tải...');
+
+    const filters = getCDFilterPayload();
+    if (!filters) {
+        setButtonIdle(button, originalText);
+        return;
+    }
+
+    // Hủy biểu đồ drilldown cũ (nếu có)
+    if (cdDrilldownChartInstance) {
+        cdDrilldownChartInstance.destroy();
+        cdDrilldownChartInstance = null;
+        document.getElementById('drilldown-chart-container').innerHTML = '';
+        document.getElementById('drilldown-modal-title').innerText = 'Drilldown';
+        document.getElementById('drilldown-modal').classList.add('hidden');
+    }
+
+    try {
+        // Gọi song song 3 API
+        const [mapRes, performanceRes, ageGenderRes] = await Promise.all([
+            fetch('/api/geo_map_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters) 
+            }),
+            fetch('/api/camp_performance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters) 
+            }),
+            fetch('/api/age_gender_chart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters) 
+            })
+        ]);
+
+        if (!mapRes.ok) { const err = await mapRes.json(); throw new Error(`Lỗi bản đồ: ${err.error}`); }
+        if (!performanceRes.ok) { const err = await performanceRes.json(); throw new Error(`Lỗi bảng: ${err.error}`); }
+        if (!ageGenderRes.ok) { const err = await ageGenderRes.json(); throw new Error(`Lỗi biểu đồ A/G: ${err.error}`); }
+
+        const mapData = await mapRes.json();
+        const performanceData = await performanceRes.json();
+        const ageGenderData = await ageGenderRes.json();
+
+        // Render tất cả
+        renderGeoMapData(mapData);
+        renderCDPerformanceData(performanceData);
+        renderAgeGenderChart(ageGenderData);
+
+    } catch (error) {
+        console.error('Lỗi khi áp dụng bộ lọc CĐ:', error);
+        showNotification(`Lỗi khi lấy dữ liệu: ${error.message}`, 'error');
+    } finally {
+        setButtonIdle(button, originalText);
+        feather.replace();
+    }
+}
+
+/**
+ * [MỚI] Render bản đồ Folium
+ */
+function renderGeoMapData(data) {
+    const container = document.getElementById('folium-map-container');
+    if (!container) return;
+
+    if (data.error) {
+        container.innerHTML = `<p class="text-red-500">Lỗi: ${data.error}</p>`;
+        return;
+    }
+    
+    container.innerHTML = ''; // Xóa chữ "Đang tải..."
+    const iframe = document.createElement('iframe');
+    iframe.srcdoc = data.map_html; // Đặt HTML của bản đồ vào srcdoc
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.minHeight = '500px'; 
+    iframe.style.border = 'none';
+    iframe.style.borderRadius = '0.5rem'; // bo góc
+    
+    container.appendChild(iframe);
+    
+    // Đánh dấu là đã tải thành công
+    cdMapLoaded = true;
+}
+
+/**
+ * [MỚI] Render 3 Bảng (Gender, Age, Geo) và 1 Pie Chart (Region)
+ */
+function renderCDPerformanceData(data) {
+    if (!data) return;
+
+    // --- 1. Bảng Giới tính ---
+    const genderTableBody = document.getElementById('gender-table-body');
+    let genderHtml = '';
+    let gTotalImp = 0, gTotalClicks = 0, gTotalValue = 0;
+    if (data.gender_table.length > 0) {
+        data.gender_table.forEach(row => {
+            genderHtml += `
+                <tr class="border-b">
+                    <td class="px-4 py-2.5 capitalize">${row.gender}</td>
+                    <td class="px-4 py-2.5 text-right">${formatNumber(row.impressions)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatNumber(row.clicks)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.purchase_value)}</td>
+                </tr>
+            `;
+            gTotalImp += Number(row.impressions) || 0;
+            gTotalClicks += Number(row.clicks) || 0;
+            gTotalValue += Number(row.purchase_value) || 0;
+        });
+    } else {
+        genderHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
+    }
+    // Cập nhật dòng tổng cộng
+    document.getElementById('gender-total-impressions').innerText = formatNumber(gTotalImp);
+    document.getElementById('gender-total-clicks').innerText = formatNumber(gTotalClicks);
+    document.getElementById('gender-total-value').innerText = formatCurrency(gTotalValue);
+    genderTableBody.innerHTML = genderHtml;
+
+    // --- 2. Bảng Độ tuổi ---
+    const ageTableBody = document.getElementById('age-table-body');
+    let ageHtml = '';
+    let aTotalImp = 0, aTotalClicks = 0, aTotalValue = 0;
+    if (data.age_table.length > 0) {
+        data.age_table.forEach(row => {
+            ageHtml += `
+                <tr class="border-b">
+                    <td class="px-4 py-2.5">${row.age}</td>
+                    <td class="px-4 py-2.5 text-right">${formatNumber(row.impressions)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatNumber(row.clicks)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.purchase_value)}</td>
+                </tr>
+            `;
+            aTotalImp += Number(row.impressions) || 0;
+            aTotalClicks += Number(row.clicks) || 0;
+            aTotalValue += Number(row.purchase_value) || 0;
+        });
+    } else {
+        ageHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
+    }
+    // Cập nhật dòng tổng cộng
+    document.getElementById('age-total-impressions').innerText = formatNumber(aTotalImp);
+    document.getElementById('age-total-clicks').innerText = formatNumber(aTotalClicks);
+    document.getElementById('age-total-value').innerText = formatCurrency(aTotalValue);
+    ageTableBody.innerHTML = ageHtml;
+
+
+    // --- 3. Bảng Địa lý ---
+    const geoTableBody = document.getElementById('geo-table-body');
+    let geoHtml = '';
+    let geoTotalSpend = 0, geoTotalPurchases = 0;
+    if (data.geo_table.length > 0) {
+        data.geo_table.forEach(row => {
+            geoHtml += `
+                <tr class="border-b">
+                    <td class="px-4 py-2.5">${row.region_name}</td>
+                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.spend)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatNumber(row.purchases)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
+                </tr>
+            `;
+            geoTotalSpend += Number(row.spend) || 0;
+            geoTotalPurchases += Number(row.purchases) || 0;
+        });
+    } else {
+        geoHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
+    }
+    // Cập nhật dòng tổng cộng
+    const avgCPA = geoTotalPurchases > 0 ? (geoTotalSpend / geoTotalPurchases) : 0;
+    document.getElementById('geo-total-spend').innerText = formatCurrency(geoTotalSpend);
+    document.getElementById('geo-total-purchases').innerText = formatNumber(geoTotalPurchases);
+    document.getElementById('geo-total-cpa').innerText = formatCurrency(avgCPA);
+    geoTableBody.innerHTML = geoHtml;
+    
+    // --- 4. Biểu đồ tròn Địa lý ---
+    if (cdRegionPieChartInstance) {
+        if (data.geo_pie_chart.labels.length > 0) {
+            cdRegionPieChartInstance.data.labels = data.geo_pie_chart.labels;
+            cdRegionPieChartInstance.data.datasets = data.geo_pie_chart.datasets;
+        } else {
+            cdRegionPieChartInstance.data.labels = ['Không có dữ liệu'];
+            cdRegionPieChartInstance.data.datasets = [{ data: [1], backgroundColor: ['#E5E7EB'] }];
+        }
+        cdRegionPieChartInstance.update();
+    }
+}
+
+/**
+ * [MỚI] Render biểu đồ cột đôi (Grouped Bar) Age-Gender
+ */
+function renderAgeGenderChart(data) {
+    if (!cdAgeGenderChartInstance) return;
+    
+    if (data.labels.length > 0) {
+        cdAgeGenderChartInstance.data.labels = data.labels;
+        cdAgeGenderChartInstance.data.datasets = data.datasets;
+    } else {
+        cdAgeGenderChartInstance.data.labels = ['Không có dữ liệu'];
+        cdAgeGenderChartInstance.data.datasets = [];
+    }
+    cdAgeGenderChartInstance.update();
+}
+
+/**
+ * [MỚI] Xử lý sự kiện click drilldown từ biểu đồ Age-Gender
+ */
+async function handleAgeGenderDrilldown(age, gender) {
+    console.log(`Bắt đầu drilldown cho: Age ${age}, Gender ${gender}`);
+    
+    // 1. Lấy bộ lọc CĐ hiện tại
+    const filters = getCDFilterPayload();
+    if (!filters) {
+        showNotification('Không thể drilldown, bộ lọc không hợp lệ.', 'error');
+        return;
+    }
+
+    // 2. Chuẩn bị payload cho API drilldown
+    const payload = {
+        ...filters, // Bộ lọc chính (account, date, campaigns)
+        group_by_dimension: 'campaign',
+        primary_metric: 'impressions',
+        secondary_metric: 'purchase_value',
+        drilldown_filters: { // Bộ lọc phụ
+            age: age,
+            gender: gender
+        }
+    };
+    
+    // 3. Hiển thị modal và trạng thái loading
+    const modal = document.getElementById('drilldown-modal');
+    const modalTitle = document.getElementById('drilldown-modal-title');
+    const chartContainer = document.getElementById('drilldown-chart-container');
+    
+    modalTitle.innerText = `Top 5 Chiến dịch cho: ${gender.toUpperCase()} (Tuổi ${age})`;
+    chartContainer.innerHTML = '<p class="text-gray-500">Đang tải dữ liệu drilldown...</p>';
+    modal.classList.remove('hidden');
+
+    // 4. Hủy biểu đồ cũ nếu có
+    if (cdDrilldownChartInstance) {
+        cdDrilldownChartInstance.destroy();
+        cdDrilldownChartInstance = null;
+    }
+
+    try {
+        // 5. Gọi API
+        const response = await fetch('/api/drilldown_chart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Lỗi tải dữ liệu drilldown');
+        }
+
+        const chartData = await response.json();
+
+        // 6. Vẽ biểu đồ mới
+        if (chartData.labels.length === 0) {
+             chartContainer.innerHTML = '<p class="text-gray-500">Không tìm thấy dữ liệu drilldown cho nhóm này.</p>';
+             return;
+        }
+        
+        // Xóa 'Đang tải...'
+        chartContainer.innerHTML = ''; 
+        const canvas = document.createElement('canvas');
+        chartContainer.appendChild(canvas);
+
+        cdDrilldownChartInstance = new Chart(canvas.getContext('2d'), {
+            type: 'bar', // Combo chart
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { 
+                        type: 'linear', 
+                        position: 'left', 
+                        title: { display: true, text: 'Impressions' },
+                        beginAtZero: true
+                    },
+                    y1: { 
+                        type: 'linear', 
+                        position: 'right', 
+                        title: { display: true, text: 'Purchase Value' },
+                        grid: { drawOnChartArea: false }, // Chỉ vẽ lưới cho trục chính
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Lỗi khi drilldown:', error);
+        chartContainer.innerHTML = `<p class="text-red-500">Lỗi: ${error.message}</p>`;
     }
 }

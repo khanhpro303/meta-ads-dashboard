@@ -101,7 +101,7 @@ def main():
             
             # 2.1 Cập nhật DimDate
             # Cần chuyển đổi current_date (kiểu date) sang datetime
-            target_date_dt = current_date
+            target_date_dt = datetime.combine(current_date, datetime.min.time())
             db_manager.upsert_dates(target_date_dt, target_date_dt)
             
             # 2.2 Nạp FactPerformanceRegion
