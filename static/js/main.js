@@ -1866,7 +1866,7 @@ function renderCDPerformanceData(data) {
                     <td class="px-4 py-2.5">${row.region_name}</td>
                     <td class="px-4 py-2.5 text-right">${formatCurrency(row.spend)}</td>
                     <td class="px-4 py-2.5 text-right">${formatNumber(row.purchases)}</td>
-                    <td class_,"px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
+                    <td class="px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
                 </tr>
             `;
             geoTotalSpend += Number(row.spend) || 0;
@@ -1875,14 +1875,18 @@ function renderCDPerformanceData(data) {
     } else {
         geoHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
     }
-    
-    // [SỬA LỖI] Logic của bảng Geo đã đúng (cập nhật DOM)
-    // Cập nhật dòng tổng cộng (vì nó nằm ngoài tbody)
+        
+    // [SỬA LỖI] Tính toán và Thêm dòng "Tổng cộng" vào chuỗi HTML
     const avgCPA = geoTotalPurchases > 0 ? (geoTotalSpend / geoTotalPurchases) : 0;
-    document.getElementById('geo-total-spend').innerText = formatCurrency(geoTotalSpend);
-    document.getElementById('geo-total-purchases').innerText = formatNumber(geoTotalPurchases);
-    document.getElementById('geo-total-cpa').innerText = formatCurrency(avgCPA);
-    geoTableBody.innerHTML = geoHtml; // Chỉ ghi đè data rows
+    geoHtml += `
+        <tr class="font-bold bg-gray-100 sticky bottom-0">
+            <td class="px-4 py-3">Tổng cộng</td>
+            <td class="px-4 py-3 text-right">${formatCurrency(geoTotalSpend)}</td>
+            <td class="px-4 py-3 text-right">${formatNumber(geoTotalPurchases)}</td>
+            <td class="px-4 py-3 text-right">${formatCurrency(avgCPA)}</td>
+        </tr>
+    `;
+    geoTableBody.innerHTML = geoHtml; // Ghi đè bằng HTML hoàn chỉnh
     
     // --- 4. Biểu đồ tròn Địa lý ---
     if (cdRegionPieChartInstance) {
