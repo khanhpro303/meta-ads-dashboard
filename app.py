@@ -1464,9 +1464,9 @@ def get_geo_map_data():
         ).join(
             DimDate, FactPerformanceRegion.date_key == DimDate.date_key
         ).join(
-            DimAd, FactPerformanceRegion.ad_id == DimAd.ad_id # Cần join để lọc account_id
+            DimCampaign, FactPerformanceRegion.campaign_id == DimCampaign.campaign_id # Cần join để lọc account_id
         ).filter(
-            DimAd.ad_account_id == account_id # Lọc theo tài khoản
+            DimCampaign.ad_account_id == account_id # Lọc theo tài khoản
         ).filter(
             DimDate.full_date.between(start_date, end_date) # Lọc theo ngày
         ).filter(
