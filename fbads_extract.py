@@ -941,10 +941,25 @@ class FacebookAdsExtractor:
                     url = None
 
             except requests.exceptions.RequestException as e:
+                is_token_error = False
+                if e.response is not None:
+                    try:
+                        error_data = e.response.json().get('error', {})
+                        if error_data.get('code') == 190: # 190 is OAuthException
+                            is_token_error = True
+                    except requests.exceptions.JSONDecodeError:
+                        pass # Không phải lỗi JSON
+                
+                if is_token_error:
+                    logger.warning(f"Phát hiện lỗi Token (190) cho Page {page_id} (trong get_page_metrics_by_day).")
+                    raise e # Ném lại lỗi để (database_manager) bắt
+                
+                # Lỗi request khác (ví dụ: 500, 404), chỉ log và break
                 logger.error(f"Lỗi khi lấy Page Metrics (Trang {page_count}) cho Page {page_id}: {e}")
                 if e.response is not None:
                     logger.error(f"Response: {e.response.json()}")
-                break
+                break # Break the `while` loop
+            
             except Exception as e:
                 logger.error(f"Lỗi không xác định: {e}")
                 break
@@ -1073,10 +1088,24 @@ class FacebookAdsExtractor:
                     url = None
             
             except requests.exceptions.RequestException as e:
+                is_token_error = False
+                if e.response is not None:
+                    try:
+                        error_data = e.response.json().get('error', {})
+                        if error_data.get('code') == 190: # 190 is OAuthException
+                            is_token_error = True
+                    except requests.exceptions.JSONDecodeError:
+                        pass # Không phải lỗi JSON
+
+                if is_token_error:
+                    logger.warning(f"Phát hiện lỗi Token (190) cho Page {page_id} (trong get_posts_with_lifetime_insights).")
+                    raise e # Ném lại lỗi để (database_manager) bắt
+
+                # Lỗi request khác (ví dụ: 500, 404), chỉ log và break
                 logger.error(f"Lỗi khi lấy Posts (Trang {page_count}) cho Page {page_id}: {e}")
                 if e.response is not None:
                     logger.error(f"Response: {e.response.json()}")
-                break
+                break # Break the `while` loop
             except Exception as e:
                 logger.error(f"Lỗi không xác định: {e}")
                 break

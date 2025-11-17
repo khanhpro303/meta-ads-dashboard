@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 from matplotlib.dates import relativedelta
+import requests
+import re
 from sqlalchemy import func, select, and_, case
 
 # Import các lớp từ database_manager
@@ -1278,6 +1280,114 @@ def get_fanpage_overview_data():
 
     except Exception as e:
         logger.error(f"Lỗi khi lấy dữ liệu Fanpage Overview: {e}", exc_info=True)
+        return jsonify({'error': 'Lỗi server nội bộ.'}), 500
+    finally:
+        session.close()
+
+@app.route('/api/fanpage/cover', methods=['GET'])
+def get_fanpage_cover():
+    """
+    Lấy URL ảnh bìa (cover source) cho một page_id cụ thể.
+    Tự động refresh Page Token nếu gặp lỗi 190 (Token hết hạn).
+    """
+    session = db_manager.SessionLocal()
+    
+    # 1. Lấy page_id từ query param
+    page_id = request.args.get('page_id')
+    if not page_id:
+        return jsonify({'error': 'Thiếu "page_id" query parameter.'}), 400
+
+    try:
+        # 2. Lấy Page Access Token đã lưu trong CSDL
+        page = session.query(DimFanpage.page_access_token)\
+            .filter(DimFanpage.page_id == page_id)\
+            .first()
+        
+        if not page or not page.page_access_token:
+            logger.error(f"Không tìm thấy token cho page_id {page_id} trong dim_fanpage.")
+            return jsonify({'error': 'Không tìm thấy Fanpage hoặc Page Access Token trong CSDL.'}), 404
+        
+        page_access_token = page.page_access_token
+        base_url = os.getenv("BASE_URL", "https://graph.facebook.com/v24.0")
+        
+        # 3. Định nghĩa hàm gọi API (để có thể retry)
+        def call_api(token_to_use: str) -> dict:
+            api_url = f"{base_url}/{page_id}"
+            params = {
+                'fields': 'cover{source}',
+                'access_token': token_to_use
+            }
+            response = requests.get(api_url, params=params)
+            response.raise_for_status() # Ném lỗi (ví dụ: 190) nếu thất bại
+            return response.json()
+
+        # 4. Thử gọi API lần 1
+        try:
+            data = call_api(page_access_token)
+        
+        except requests.exceptions.RequestException as e:
+            # Kiểm tra xem có phải lỗi token hết hạn (190) không
+            is_token_error = False
+            if e.response is not None:
+                try:
+                    is_token_error = e.response.json().get('error', {}).get('code') == 190
+                except Exception:
+                    pass # Không phải lỗi JSON
+            
+            if is_token_error:
+                logger.warning(f"Token ảnh bìa cho {page_id} đã hết hạn. Đang làm mới...")
+                
+                # Import extractor (cần thiết cho logic này)
+                from fbads_extract import FacebookAdsExtractor
+                extractor = FacebookAdsExtractor()
+                
+                # B1: Lấy token mới (dùng User Token)
+                new_fanpages = extractor.get_all_fanpages()
+                
+                # B2: Cập nhật CSDL (dùng db_manager đã có)
+                db_manager.upsert_fanpages(new_fanpages) # upsert_fanpages tự quản lý session
+                
+                # B3: Tìm token mới cho page này
+                new_token = None
+                for new_page in new_fanpages:
+                    if new_page.get('id') == page_id:
+                        new_token = new_page.get('access_token')
+                        break
+                        
+                if not new_token:
+                    logger.error(f"Không tìm thấy token mới cho {page_id} sau khi làm mới.")
+                    raise e # Ném lại lỗi gốc
+                
+                # B4: Thử lại (Lần 2) với token mới
+                logger.info(f"Thử lại API ảnh bìa cho {page_id} với token mới...")
+                data = call_api(new_token) # Nếu thất bại lần 2, nó sẽ ném lỗi ra ngoài
+                
+            else: 
+                # Không phải lỗi 190, ném lại lỗi gốc để except bên ngoài bắt
+                raise e
+                
+        # 5. Bóc tách và trả về URL (từ 'data' của Lần 1 hoặc Lần 2 thành công)
+        cover_url = data.get('cover', {}).get('source')
+        
+        if not cover_url:
+            return jsonify({'error': 'Page này không có ảnh bìa.'}), 404
+            
+        return jsonify({'cover_url': cover_url})
+
+    except requests.exceptions.RequestException as e:
+        # Lỗi này bị bắt nếu:
+        # 1. Lần 1 thất bại (với lỗi không phải 190)
+        # 2. Lần 2 (retry) cũng thất bại
+        logger.error(f"Lỗi API (cuối cùng) khi lấy ảnh bìa cho {page_id}: {e}")
+        if e.response is not None:
+            try:
+                logger.error(f"Response: {e.response.json()}")
+            except:
+                 logger.error(f"Response (raw): {e.response.text}")
+        return jsonify({'error': 'Lỗi khi gọi Meta API (đã thử lại nếu token hết hạn).'}), 500
+    
+    except Exception as e:
+        logger.error(f"Lỗi nội bộ khi lấy ảnh bìa: {e}", exc_info=True)
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
     finally:
         session.close()

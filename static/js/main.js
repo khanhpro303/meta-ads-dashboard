@@ -250,31 +250,35 @@ function initializeCharts() {
         }
     });
 
-    // [MỚI] Khởi tạo biểu đồ cho Fanpage Overview
+    // Khởi tạo biểu đồ cho Fanpage Overview
     const ctxFpMain = document.getElementById('fp-main-chart');
     if (ctxFpMain) {
         fpMainChartInstance = new Chart(ctxFpMain.getContext('2d'), {
-            type: 'line',
+            type: 'bar', // <-- THAY ĐỔI: Type chính là 'bar'
             data: { labels: [], datasets: [] },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
-                elements: { line: { tension: 0.4 } },
+                elements: { line: { tension: 0.4 } }, // Giữ tension cho line chart
                 plugins: {
-                    legend: { display: false } // Ẩn legend (vì đã có legend tùy chỉnh ở HTML)
+                    legend: { display: false } 
                 },
                 scales: {
                     x: {
-                        grid: { display: false }
+                        grid: { display: false },
+                        stacked: true // <-- THÊM MỚI: Bật stacked cho trục X
                     },
                     y: {
+                        beginAtZero: true
+                    },
+                    y1: { // Trục y1 sẽ được cấu hình trong hàm render
                         beginAtZero: true
                     }
                 }
             }
         });
-        console.log("Đã khởi tạo 'fpMainChartInstance'.");
+        console.log("Đã khởi tạo 'fpMainChartInstance' (dạng mixed bar/line).");
     }
 }
 
@@ -1047,6 +1051,9 @@ async function handleFanpageApplyFilters() {
         ...dateParams // Bao gồm date_preset, start_date, end_date
     };
 
+    // Gọi API tải ảnh bìa (không cần await, để nó chạy ngầm)
+    loadAndRenderFanpageCover(page_id);
+
     try {
         const response = await fetch('/api/fanpage/overview_data', {
             method: 'POST',
@@ -1107,34 +1114,43 @@ function renderFanpageMainChart(chartData) {
     if (!fpMainChartInstance || !chartData) return;
 
     fpMainChartInstance.data.labels = chartData.labels;
+    
+    // --- [SỬA ĐỔI] ---
     fpMainChartInstance.data.datasets = [
         {
+            type: 'line', // <-- THÊM MỚI
             label: 'New likes',
             data: chartData.datasets[0].data,
             borderColor: chartData.datasets[0].borderColor,
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
             fill: true,
-            yAxisID: 'y'
+            yAxisID: 'y',
+            tension: 0.4 // Đảm bảo đường cong
         },
         {
+            type: 'bar', // <-- THÊM MỚI
             label: 'Page Impressions',
             data: chartData.datasets[1].data,
-            borderColor: chartData.datasets[1].borderColor,
-            backgroundColor: 'rgba(156, 163, 175, 0.1)',
-            fill: true,
-            yAxisID: 'y1'
+            backgroundColor: chartData.datasets[1].borderColor, // Dùng màu đậm cho bar
+            yAxisID: 'y1',
+            stack: 'bar_stack' // <-- THÊM MỚI: Đặt tên stack
         },
         {
+            type: 'bar', // <-- THÊM MỚI
             label: 'Page Post Engagements',
             data: chartData.datasets[2].data,
-            borderColor: chartData.datasets[2].borderColor,
-            backgroundColor: 'rgba(244, 114, 182, 0.1)',
-            fill: true,
-            yAxisID: 'y1'
+            backgroundColor: chartData.datasets[2].borderColor, // Dùng màu đậm cho bar
+            yAxisID: 'y1',
+            stack: 'bar_stack' // <-- THÊM MỚI: Đặt tên stack
         }
     ];
+
+    // Cấu hình 2 trục Y (bật stacked cho y1)
     fpMainChartInstance.options.scales = {
-        x: { grid: { display: false } },
+        x: { 
+            grid: { display: false },
+            stacked: true // Đảm bảo trục X cũng stacked
+        },
         y: { 
             type: 'linear', 
             display: true, 
@@ -1147,7 +1163,8 @@ function renderFanpageMainChart(chartData) {
             display: true, 
             position: 'right', 
             title: { display: true, text: 'Impressions / Engagements' },
-            grid: { drawOnChartArea: false } 
+            grid: { drawOnChartArea: false },
+            stacked: true // <-- THÊM MỚI: Bật stacked cho trục Y phụ
         }
     };
     fpMainChartInstance.update();
@@ -1293,4 +1310,50 @@ function renderFanpageTopContent(topContentData) {
     renderTopTable('fp-top-content-impr-body', 'fp-top-impr-total', topContentData.impressions);
     renderTopTable('fp-top-content-like-body', 'fp-top-like-total', topContentData.likes);
     renderTopTable('fp-top-content-click-body', 'fp-top-click-total', topContentData.clicks);
+}
+
+/**
+ * [MỚI] Tải và render ảnh bìa Fanpage
+ * (Được gọi bởi handleFanpageApplyFilters)
+ */
+async function loadAndRenderFanpageCover(page_id) {
+    const placeholder = document.getElementById('fp-cover-image-placeholder');
+    if (!placeholder) return;
+
+    // 1. Đặt về trạng thái đang tải
+    placeholder.innerHTML = `
+        <span class="text-gray-400 text-sm">Đang tải ảnh bìa...</span>
+    `;
+
+    try {
+        // 2. Gọi API (đã viết ở app.py)
+        const response = await fetch(`/api/fanpage/cover?page_id=${page_id}`);
+        
+        if (!response.ok) {
+             // Lỗi 404 (không có ảnh) hoặc 500 (token hết hạn)
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Lỗi không xác định');
+        }
+
+        const data = await response.json();
+        const cover_url = data.cover_url;
+
+        if (cover_url) {
+            // 3. Thành công: Render ảnh
+            placeholder.innerHTML = `
+                <img src="${cover_url}" alt="Ảnh bìa Fanpage" 
+                     class="w-full h-full object-cover">
+            `;
+        } else {
+            // API thành công nhưng không trả về URL
+            throw new Error('Không tìm thấy URL ảnh bìa.');
+        }
+
+    } catch (error) {
+        console.warn(`Không thể tải ảnh bìa: ${error.message}`);
+        // 4. Thất bại: Render trạng thái mặc định
+        placeholder.innerHTML = `
+            <span class="text-gray-400 text-sm">Không có ảnh bìa</span>
+        `;
+    }
 }
