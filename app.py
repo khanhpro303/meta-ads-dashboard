@@ -1216,18 +1216,30 @@ def get_fanpage_overview_data():
             } for row in table_query
         ]
 
-        # --- Q5: Bảng Sơ Lượng Content (fp-content-type-body) (Giữ nguyên) ---
+        # --- Q5: Bảng Sơ Lượng Content (fp-content-type-body) ---
+        # Dùng CASE để phân loại 'post_type'
+        
+        # 1. Định nghĩa cột "phân loại"
+        #    Nếu post_type chứa dấu ':' (ví dụ: "00:32"), coi là Video/Reels
+        #    Ngược lại (bao gồm cả NULL), coi là Static
+        categorized_post_type = case(
+            (FactPostPerformance.post_type.like('%:%'), 'Video/Reels'),
+            else_='Static'
+        ).label('categorized_type')
+
+        # 2. Truy vấn và nhóm theo cột phân loại MỚI
         content_type_query = session.query(
-            FactPostPerformance.post_type,
+            categorized_post_type,
             func.count(FactPostPerformance.post_id).label('count')
         ).filter(FactPostPerformance.page_id == page_id)\
          .filter(FactPostPerformance.created_time.between(start_datetime, end_datetime))\
-         .group_by(FactPostPerformance.post_type)\
+         .group_by(categorized_post_type)\
          .order_by(func.count(FactPostPerformance.post_id).desc())\
          .all()
         
+        # 3. Render kết quả
         content_type_table = [
-            {'type': row.post_type or 'Unknown', 'count': row.count}
+            {'type': row.categorized_type, 'count': row.count}
             for row in content_type_query
         ]
 

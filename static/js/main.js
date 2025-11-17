@@ -1182,11 +1182,12 @@ function renderFanpageInteractionsTable(tableData) {
                 </tr>
             `;
             // Cộng dồn tổng
-            totalImpressions += row.impressions;
-            totalEngagement += row.engagement;
-            totalImpressionsUnique += row.impressions_unique; // <-- THÊM MỚI
-            totalFanRemoves += row.fan_removes; // <-- THÊM MỚI
-            totalVideoViews += row.video_views;
+            // Dùng Number() để đảm bảo cộng số
+            totalImpressions += Number(row.impressions) || 0;
+            totalEngagement += Number(row.engagement) || 0;
+            totalImpressionsUnique += Number(row.impressions_unique) || 0; 
+            totalFanRemoves += Number(row.fan_removes) || 0; 
+            totalVideoViews += Number(row.video_views) || 0;
         });
     }
 
@@ -1206,7 +1207,7 @@ function renderFanpageInteractionsTable(tableData) {
 }
 
 /**
- * [MỚI] Render bảng Sơ lượng Content (Nhóm Content)
+ * [MỚI] Render bảng Số lượng Content (Nhóm Content)
  */
 function renderFanpageContentTypeTable(tableData) {
     const tableBody = document.getElementById('fp-content-type-body');
@@ -1246,8 +1247,9 @@ function renderFanpageContentTypeTable(tableData) {
 function renderFanpageTopContent(topContentData) {
     if (!topContentData) return;
 
+    // --- LOGIC ĐÃ SỬA ---
     // Hàm helper để render 1 bảng
-    const renderTopTable = (tbodyId, totalId, data) => {
+    const renderTopTable = (tbodyId, totalCellId, data) => {
         const tableBody = document.getElementById(tbodyId);
         if (!tableBody) return;
 
@@ -1255,10 +1257,11 @@ function renderFanpageTopContent(topContentData) {
         let total = 0;
 
         if (!data || data.length === 0) {
-            html = `<tr><td colspan="3" class="text-center py-1.5 px-2 text-gray-500">N/A</td></tr>`;
+            html = `<tr><td colspan="3" class="text-center py-4 px-2 text-gray-500">N/A</td></tr>`;
         } else {
             data.forEach(row => {
-                const message = row.message ? (row.message.length > 30 ? row.message.substring(0, 30) + '...' : row.message) : 'N/A';
+                // Rút gọn message (truncation)
+                const message = row.message ? (row.message.length > 40 ? row.message.substring(0, 40) + '...' : row.message) : 'N/A';
                 const imageHtml = row.image 
                     ? `<img src="${row.image}" alt="Post thumbnail" class="w-8 h-8 object-cover rounded-md">`
                     : `<span class="flex items-center justify-center w-8 h-8 bg-gray-200 rounded-md">
@@ -1267,23 +1270,23 @@ function renderFanpageTopContent(topContentData) {
                 
                 html += `
                     <tr>
-                        <td class="py-1.5 px-2">${imageHtml}</td>
-                        <td class="py-1.5 px-2 text-gray-700" title="${row.message || ''}">${message}</td>
-                        <td class="py-1.5 px-2 text-right font-medium text-gray-900">${formatNumber(row.value)}</td>
+                        <td class="py-2 px-2 w-10">${imageHtml}</td>
+                        <td class="py-2 px-2 text-gray-700 truncate" title="${row.message || ''}">${message}</td>
+                        <td class="py-2 px-2 text-right font-medium text-gray-900">${formatNumber(row.value)}</td>
                     </tr>
                 `;
-                total += row.value;
+                total += Number(row.value) || 0; // Đảm bảo cộng số
             });
         }
         
-        // Chèn dòng tổng cộng
-        html += `
-            <tr class="font-bold">
-                <td class="py-1.5 px-2" colspan="2">Tổng cộng</td>
-                <td id="${totalId}" class="py-1.5 px-2 text-right">${formatNumber(total)}</td>
-            </tr>
-        `;
+        // 1. Render các dòng dữ liệu động
         tableBody.innerHTML = html;
+
+        // 2. Cập nhật ô tổng cộng
+        const totalCell = document.getElementById(totalCellId);
+        if (totalCell) {
+            totalCell.innerText = formatNumber(total);
+        }
     };
 
     // Render 3 bảng

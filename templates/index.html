@@ -428,7 +428,7 @@
                         <div>
                             <button id="fp-btn-refresh" class="w-full flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
                                 <i data-feather="refresh-cw" class="w-4 h-4 mr-2"></i>
-                                <span>Làm mới Data Fanpage</span>
+                                <span>Refresh Fanpage</span>
                             </button>
                         </div>
 
@@ -454,7 +454,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                 
                 <div class="lg:col-span-1 space-y-6">
@@ -588,9 +588,9 @@
                                 <td class="px-4 py-3">Tổng cộng</td>
                                 <td id="fp-total-impressions" class="px-4 py-3">0</td>
                                 <td id="fp-total-engagement" class="px-4 py-3">0</td>
-                                <td id="fp-total-clicks" class="px-4 py-3">0</td>
-                                <td id="fp-total-comments" class="px-4 py-3">0</td>
-                                <td id="fp-total-video-views" classD="px-4 py-3">0</td>
+                                <td id="fp-total-impressions-unique" class="px-4 py-3">0</td>
+                                <td id="fp-total-fan-removes" class="px-4 py-3">0</td>
+                                <td id="fp-total-video-views" class="px-4 py-3">0</td>
                             </tr>
                         </tbody>
                     </table>
@@ -618,45 +618,107 @@
                     </div>
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow md:col-span-2">
+                <div class="bg-white p-4 rounded-lg shadow-md md:col-span-2">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">Top 5 Content</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 overflow-x-auto">
-                        <div class="min-w-max sm:min-w-full">
-                            <p class="font-semibold text-gray-600 text-sm mb-2">Impression</p>
-                            <table class="w-full text-left text-sm">
-                                <thead><tr class="border-b"><th class="py-1 px-2">Img</th><th class="py-1 px-2">Title</th><th class="py-1 px-2 text-right">Impression</th></tr></thead>
-                                <tbody id="fp-top-content-impr-body" class="divide-y divide-gray-100">
-                                    <tr class="font-bold">
-                                        <td class="py-1.5 px-2" colspan="2">Tổng cộng</td>
-                                        <td id="fp-top-impr-total" class="py-1.5 px-2 text-right">0</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        
+                        <div class="bg-white rounded-lg shadow-lg flex flex-col overflow-hidden border border-gray-200">
+                            <div class="p-3 border-b flex items-center">
+                                <i data-feather="eye" class="w-4 h-4 mr-2 text-blue-500"></i>
+                                <p class="font-semibold text-gray-700 text-sm">Impression</p>
+                            </div>
+                    
+                            <div class="overflow-y-auto" style="height: 180px;">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="sticky top-0">
+                                        <tr class="bg-gray-50">
+                                            <th class="py-2 px-2 font-medium text-gray-600 w-10">Img</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600">Title</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600 text-right">Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fp-top-content-impr-body" class="divide-y divide-gray-100">
+                                        </tbody>
+                                </table>
+                            </div>
+                    
+                            <div class="border-t">
+                                <table class="w-full text-left text-sm">
+                                    <tbody>
+                                        <tr class="font-bold bg-blue-50 text-blue-900">
+                                            <td class="py-2 px-2" colspan="2">Tổng cộng</td>
+                                            <td id="fp-top-impr-total" class="py-2 px-2 text-right">0</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div class="min-w-max sm:min-w-full">
-                            <p class="font-semibold text-gray-600 text-sm mb-2">Like</p>
-                            <table class="w-full text-left text-sm">
-                                <thead><tr class="border-b"><th class="py-1 px-2">Img</th><th class="py-1 px-2">Title</th><th class="py-1 px-2 text-right">Like</th></tr></thead>
-                                <tbody id="fp-top-content-like-body" class="divide-y divide-gray-100">
-                                    <tr class="font-bold">
-                                        <td class="py-1.5 px-2" colspan="2">Tổng cộng</td>
-                                        <td id="fp-top-like-total" class="py-1.5 px-2 text-right">0</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <div class="bg-white rounded-lg shadow-lg flex flex-col overflow-hidden border border-gray-200">
+                            <div class="p-3 border-b flex items-center">
+                                <i data-feather="thumbs-up" class="w-4 h-4 mr-2 text-pink-500"></i>
+                                <p class="font-semibold text-gray-700 text-sm">Like</p>
+                            </div>
+                    
+                            <div class="overflow-y-auto" style="height: 180px;">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="sticky top-0">
+                                        <tr class="bg-gray-50">
+                                            <th class="py-2 px-2 font-medium text-gray-600 w-10">Img</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600">Title</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600 text-right">Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fp-top-content-like-body" class="divide-y divide-gray-100">
+                                        </tbody>
+                                </table>
+                            </div>
+                    
+                            <div class="border-t">
+                                <table class="w-full text-left text-sm">
+                                    <tbody>
+                                        <tr class="font-bold bg-pink-50 text-pink-900">
+                                            <td class="py-2 px-2" colspan="2">Tổng cộng</td>
+                                            <td id="fp-top-like-total" class="py-2 px-2 text-right">0</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div class="min-w-max sm:min-w-full">
-                            <p class="font-semibold text-gray-600 text-sm mb-2">Click</p>
-                            <table class="w-full text-left text-sm">
-                                <thead><tr class="border-b"><th class="py-1 px-2">Img</th><th class="py-1 px-2">Title</th><th class="py-1 px-2 text-right">Click</th></tr></thead>
-                                <tbody id="fp-top-content-click-body" class="divide-y divide-gray-100">
-                                    <tr class="font-bold">
-                                        <td class="py-1.5 px-2" colspan="2">Tổng cộng</td>
-                                        <td id="fp-top-click-total" class="py-1.5 px-2 text-right">0</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <div class="bg-white rounded-lg shadow-lg flex flex-col overflow-hidden border border-gray-200">
+                            <div class="p-3 border-b flex items-center">
+                                <i data-feather="mouse-pointer" class="w-4 h-4 mr-2 text-green-500"></i>
+                                <p class="font-semibold text-gray-700 text-sm">Click</p>
+                            </div>
+                    
+                            <div class="overflow-y-auto" style="height: 180px;">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="sticky top-0">
+                                        <tr class="bg-gray-50">
+                                            <th class="py-2 px-2 font-medium text-gray-600 w-10">Img</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600">Title</th>
+                                            <th class="py-2 px-2 font-medium text-gray-600 text-right">Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fp-top-content-click-body" class="divide-y divide-gray-100">
+                                        </tbody>
+                                </table>
+                            </div>
+                    
+                            <div class="border-t">
+                                <table class="w-full text-left text-sm">
+                                    <tbody>
+                                        <tr class="font-bold bg-green-50 text-green-900">
+                                            <td class="py-2 px-2" colspan="2">Tổng cộng</td>
+                                            <td id="fp-top-click-total" class="py-2 px-2 text-right">0</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
+
                     </div>
                 </div>
             </div>
