@@ -705,10 +705,36 @@ function renderOverviewData(data) {
 }
 
 function renderChartData(chartData) {
-    // (Giữ nguyên)
     if (spendTrendChartInstance) {
+        
         spendTrendChartInstance.data.labels = chartData.labels;
-        spendTrendChartInstance.data.datasets = chartData.datasets;
+        spendTrendChartInstance.data.datasets = [
+            {
+                type: 'line', // Chỉ định đây là 'line'
+                label: 'Chi phí (Spend)',
+                data: chartData.datasets[0].data,
+                borderColor: 'rgb(255, 99, 132)',
+                
+                backgroundColor: 'rgba(255, 99, 132, 0.1)', // Màu fill nhạt
+                fill: true, 
+                
+                yAxisID: 'y', 
+                tension: 0.4 // Đảm bảo line cong
+            },
+            {
+                type: 'line', // Chỉ định đây là 'bar'
+                label: 'Lượt hiển thị (Impressions)',
+                data: chartData.datasets[1].data,
+                borderColor: 'rgb(54, 162, 235)',
+
+                backgroundColor: 'rgba(109, 171, 243, 0.1)', // Màu fill nhạt
+                fill: true,
+                
+                yAxisID: 'y1', 
+                tension: 0.4
+            }
+        ];
+
         spendTrendChartInstance.update();
     }
 }

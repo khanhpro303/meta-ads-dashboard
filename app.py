@@ -1108,12 +1108,14 @@ def get_fanpage_overview_data():
 
         # Helper để lấy Total Likes (metric tích lũy)
         def _get_total_likes(p_id, at_date):
+            # Lấy bản ghi MỚI NHẤT (latest record)
+            # vào hoặc trước ngày được chọn (at_date)
             result = session.query(FactPageMetricsDaily.page_fans)\
                 .join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
                 .filter(FactPageMetricsDaily.page_id == p_id)\
-                .filter(DimDate.full_date == at_date)\
-                .order_by(FactPageMetricsDaily.page_fans.desc())\
-                .first()
+                .filter(DimDate.full_date <= at_date)\
+                .order_by(DimDate.full_date.desc())\
+                .first() # <-- Lấy bản ghi đầu tiên (là ngày mới nhất)
             return result.page_fans if result else 0
 
         # Lấy dữ liệu 2 kỳ
