@@ -9,6 +9,9 @@ from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import pytz
+import time
+from geopy.geocoders import Nominatim
+from geopy.extra.rate_limiter import RateLimiter
 
 # Tải biến môi trường từ file .env
 load_dotenv()
@@ -257,6 +260,53 @@ class FactPostPerformance(Base):
     # (Bạn có thể thêm các cột metric khác ở đây nếu cần)
     
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class DimRegion(Base):
+    """
+    Bảng Dimension: Lưu trữ thông tin về Khu vực (Region).
+    Dữ liệu long/lat sẽ được thêm vào sau.
+    """
+    __tablename__ = 'dim_region'
+    
+    region_id = Column(Integer, primary_key=True, autoincrement=True)
+    region_name = Column(String, unique=True, nullable=False) # Tên từ API (e.g., "Ho Chi Minh City")
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class FactPerformanceRegion(Base):
+    """
+    Bảng Fact: Lưu trữ các chỉ số hiệu suất chi tiết theo breakdown khu vực.
+    """
+    __tablename__ = 'fact_performance_region'
+    
+    # Khóa chính tự tăng
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    
+    # Các khóa ngoại
+    date_key = Column(Integer, ForeignKey('dim_date.date_key'), nullable=False)
+    campaign_id = Column(String, ForeignKey('dim_campaign.campaign_id'), nullable=False)
+    adset_id = Column(String, ForeignKey('dim_adset.adset_id'), nullable=False)
+    ad_id = Column(String, ForeignKey('dim_ad.ad_id'), nullable=False)
+    region_id = Column(Integer, ForeignKey('dim_region.region_id'), nullable=False) # <-- Khóa ngoại MỚI
+    
+    # Các chỉ số (Metrics) - Sao chép y hệt các bảng Fact khác
+    spend = Column(Float, default=0.0)
+    impressions = Column(BigInteger, default=0)
+    clicks = Column(BigInteger, default=0)
+    ctr = Column(Float, default=0.0)
+    cpm = Column(Float, default=0.0)
+    reach = Column(BigInteger, default=0)
+    frequency = Column(Float, default=0.0)
+    
+    messages_started = Column(Integer, default=0)
+    purchases = Column(Integer, default=0)
+    purchase_value = Column(Float, default=0.0)
+    post_engagement = Column(Integer, default=0)
+    link_click = Column(Integer, default=0)
+
+    # Ràng buộc duy nhất
+    __table_args__ = (UniqueConstraint('date_key', 'ad_id', 'region_id', name='_ad_performance_region_uc'),)
 
 # --- CLASS QUẢN LÝ DATABASE ---
 
@@ -940,7 +990,184 @@ class DatabaseManager:
             raise
         finally:
             session.close()
-        
+
+    def upsert_performance_region_data(self, insights_data: List[Dict[str, Any]]):
+        """
+        Thực hiện 'UPSERT' cho bảng fact_performance_region.
+        """
+        if not insights_data:
+            logger.info("Không có dữ liệu performance region để upsert.")
+            return
+
+        session = self.SessionLocal()
+        try:
+            # --- BƯỚC 1: Tải trước các Dimension vào bộ nhớ ---
+            all_dates = {rec['date_start'] for rec in insights_data if 'date_start' in rec}
+            # Lấy tất cả tên region duy nhất từ API
+            all_regions = {rec['region'] for rec in insights_data if 'region' in rec}
+
+            date_map = {str(r.full_date): r.date_key for r in session.query(DimDate.full_date, DimDate.date_key).filter(DimDate.full_date.in_([datetime.fromisoformat(d).date() for d in all_dates]))}
+            # Lấy map (hoặc tạo mới) cho DimRegion nếu chưa có xuất hiện.
+            region_map = self._get_or_create_dim_records(session, DimRegion, 'region_name', all_regions, 'region_id')
+
+            # --- BƯỚC 2: Chuẩn bị dữ liệu để load vào Fact Table ---
+            prepared_data = []
+            for record in insights_data:
+                if not all([record.get('date_start'), record.get('ad_id'), record.get('adset_id'), record.get('campaign_id')]):
+                    continue
+
+                # Bóc tách actions (y hệt các hàm upsert khác)
+                messages_started = 0
+                purchases = 0
+                purchase_value = 0.0
+                post_engagement = 0
+                link_click = 0
+                if 'actions' in record:
+                    for action in record.get('actions', []):
+                        action_type = action.get('action_type')
+                        value = int(action.get('value', 0))
+                        if action_type == 'onsite_conversion.messaging_conversation_started_7d':
+                            messages_started = value
+                        elif action_type == 'onsite_conversion.purchase':
+                            purchases = value
+                        elif action_type == 'post_engagement':
+                            post_engagement = value
+                        elif action_type == 'link_click':
+                            link_click = value
+                if 'action_values' in record:
+                    for action in record.get('action_values', []):
+                        if action.get('action_type') == 'onsite_conversion.purchase':
+                            purchase_value = float(action.get('value', 0.0))
+
+                # Map dữ liệu thô với các khóa ngoại đã tra cứu
+                fact_record = {
+                    'date_key': date_map.get(record['date_start']),
+                    'campaign_id': record['campaign_id'],
+                    'adset_id': record['adset_id'],
+                    'ad_id': record['ad_id'],
+                    'region_id': region_map.get(record.get('region')), # <-- Mapping Region ID
+                    'spend': float(record.get('spend', 0.0)),
+                    'impressions': int(record.get('impressions', 0)),
+                    'clicks': int(record.get('clicks', 0)),
+                    'ctr': float(record.get('ctr', 0.0)),
+                    'cpm': float(record.get('cpm', 0.0)),
+                    'reach': int(record.get('reach', 0)),
+                    'frequency': float(record.get('frequency', 0.0)),
+                    'messages_started': messages_started,
+                    'purchases': purchases,
+                    'purchase_value': purchase_value,
+                    'post_engagement': post_engagement,
+                    'link_click': link_click
+                }
+                
+                # Chỉ thêm vào nếu các khóa chính (FK) đều hợp lệ
+                if fact_record['date_key'] and fact_record['region_id']:
+                    prepared_data.append(fact_record)
+
+            if not prepared_data:
+                logger.warning("Không có dữ liệu hợp lệ để chèn vào fact_performance_region sau khi chuẩn bị.")
+                return
+
+            # --- BƯỚC 3: Load hàng loạt vào Fact Table ---
+            stmt = pg_insert(FactPerformanceRegion).values(prepared_data)
+            on_conflict_stmt = stmt.on_conflict_do_update(
+                constraint='_ad_performance_region_uc', # <-- Dùng constraint của bảng region
+                set_={
+                    'spend': stmt.excluded.spend,
+                    'impressions': stmt.excluded.impressions,
+                    'clicks': stmt.excluded.clicks,
+                    'ctr': stmt.excluded.ctr,
+                    'cpm': stmt.excluded.cpm,
+                    'reach': stmt.excluded.reach,
+                    'frequency': stmt.excluded.frequency,
+                    'messages_started': stmt.excluded.messages_started,
+                    'purchases': stmt.excluded.purchases,
+                    'purchase_value': stmt.excluded.purchase_value,
+                    'post_engagement': stmt.excluded.post_engagement,
+                    'link_click': stmt.excluded.link_click
+                }
+            )
+            
+            session.execute(on_conflict_stmt)
+            session.commit()
+            logger.info(f"Đã Upsert thành công {len(prepared_data)} bản ghi vào fact_performance_region.")
+
+        except Exception as e:
+            logger.error(f"Lỗi khi Upsert Performance Region Data: {e}", exc_info=True)
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    # (Dán vào bên dưới hàm upsert_performance_region_data)
+
+    def _enrich_region_geo_data(self):
+        """
+        (Hàm mới) Tự động lấy lat/long cho các region MỚI trong DimRegion.
+        Sử dụng logic từ normalizegeo.py.
+        """
+
+        # 1. Khởi tạo Geocoder
+        geolocator = Nominatim(user_agent="meta_ads_dashboard_app_v1", timeout=10)
+        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1, error_wait_seconds=5)
+
+        session = self.SessionLocal()
+        try:
+            # 2. Lấy tất cả region CẦN cập nhật (giống logic _fetch_customers_without_geo)
+            regions_to_update = session.query(DimRegion).filter(
+                DimRegion.latitude == None
+            ).all()
+
+            if not regions_to_update:
+                logger.info("Không có region mới nào cần cập nhật Geo.")
+                session.close()
+                return
+
+            logger.info(f"Tìm thấy {len(regions_to_update)} region mới cần lấy lat/long (có RateLimit 1s/yêu cầu)...")
+
+            # 3. Lặp và gọi API
+            updated_count = 0
+            for region in regions_to_update:
+                region_name = region.region_name
+                
+                # Cần thêm "Vietnam" để Nominatim tìm chính xác.
+                if "vietnam" not in region_name.lower():
+                    search_address = f"{region_name}, Vietnam"
+                else:
+                    search_address = region_name
+                
+                try:
+                    logger.info(f"Đang tìm: '{search_address}'...")
+                    location = geocode(search_address)
+                    
+                    if location:
+                        # 4. Cập nhật bản ghi
+                        region.latitude = location.latitude
+                        region.longitude = location.longitude
+                        logger.info(f"=> Đã tìm thấy: {location.latitude}, {location.longitude}")
+                        updated_count += 1
+                    else:
+                        logger.warning(f"=> Không tìm thấy tọa độ cho: {search_address}")
+                        # Chúng ta không cập nhật gì, để nó ở trạng thái NULL
+                        # để có thể thử lại vào lần refresh sau.
+
+                except Exception as e:
+                    logger.error(f"Lỗi khi gọi API Geocode cho '{search_address}': {e}")
+                    # Tạm dừng 5 giây nếu API lỗi
+                    time.sleep(5)
+            
+            # 5. Commit tất cả thay đổi
+            if updated_count > 0:
+                session.commit()
+                logger.info(f"Đã cập nhật thành công {updated_count} tọa độ region.")
+            else:
+                session.rollback() # Không có gì để commit
+
+        except Exception as e:
+            logger.error(f"Lỗi trong quy trình _enrich_region_geo_data: {e}")
+            session.rollback()
+        finally:
+            session.close()    
     
     def refresh_data(self, start_date: str = None, end_date: str = None, date_preset: str = None):
         """
@@ -966,16 +1193,16 @@ class DatabaseManager:
             all_ads = []
             all_insights_platform = []
             all_insights_demographic = []
+            all_insights_region = []
 
             for account in accounts:
                 account_id = account['id']
                 logger.info(f"--- Đang xử lý cho tài khoản: {account['name']} ({account_id}) ---")
 
+                # (Logic lấy campaign, adset, ad giữ nguyên...)
                 campaigns = extractor.get_campaigns_for_account(account_id=account_id, start_date=start_date, end_date=end_date, date_preset=date_preset)
                 if campaigns:
                     for c in campaigns:
-                    # Ghi đè account_id ('1465010674743789')
-                    # bằng account_id ('act_1465010674743789')
                         c['account_id'] = account_id
                     all_campaigns.extend(campaigns)
                     campaign_ids = [c['id'] for c in campaigns]
@@ -983,16 +1210,13 @@ class DatabaseManager:
                     adsets = extractor.get_adsets_for_campaigns(account_id=account_id, campaign_id=campaign_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                     if adsets:
                         for a in adsets:
-                            # Ghi đè campaign_id và account_id
                             a['account_id'] = account_id
-
                         all_adsets.extend(adsets)
                         adset_ids = [a['id'] for a in adsets]
 
                         ads = extractor.get_ads_for_adsets(account_id=account_id, adset_id=adset_ids, start_date=start_date, end_date=end_date, date_preset=date_preset)
                         if ads:
                             for ad in ads:
-                                # Ghi đè campaign_id, adset_id và account_id
                                 ad['account_id'] = account_id
                             all_ads.extend(ads)
 
@@ -1004,13 +1228,13 @@ class DatabaseManager:
             logger.info("=> Hoàn thành cập nhật Dimension.")
 
             # --- BƯỚC 2: LẤY VÀ CẬP NHẬT BẢNG FACT ---
-            # Custom logs theo date_preset hoặc start_date/end_date
             if date_preset:
                 logger.info(f"Lấy dữ liệu Insights cho khoảng thời gian preset: {date_preset}...")
             elif start_date and end_date:
                 logger.info(f"Lấy dữ liệu Insights cho khoảng thời gian từ {start_date} đến {end_date}...")
             else:
                 logger.info("Lấy dữ liệu Insights cho khoảng thời gian mặc định...")
+            
             for account in accounts:
                 account_id = account['id']
                 logger.info(f"Lấy Insights platform cho tài khoản: {account_id}")
@@ -1022,6 +1246,7 @@ class DatabaseManager:
                 )
                 if insights_platform:
                     all_insights_platform.extend(insights_platform)
+                
                 logger.info(f"Lấy Insights demographic cho tài khoản: {account_id}")
                 insights_demographic = extractor.get_all_insights_demo(
                     account_id=account_id,
@@ -1031,27 +1256,44 @@ class DatabaseManager:
                 )
                 if insights_demographic:
                     all_insights_demographic.extend(insights_demographic)
+
+                logger.info(f"Lấy Insights region cho tài khoản: {account_id}")
+                insights_region = extractor.get_all_insights_region(
+                    account_id=account_id,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if insights_region:
+                    all_insights_region.extend(insights_region)
             
-            if not all_insights_platform and not all_insights_demographic:
+            if not all_insights_platform and not all_insights_demographic and not all_insights_region:
                 logger.warning("Không có dữ liệu insights nào được trả về từ API. Kết thúc quy trình.")
                 return
 
-            logger.info(f"Tổng cộng có {len(all_insights_platform) + len(all_insights_demographic)} bản ghi insights được lấy về.")
+            logger.info(f"Tổng cộng có {len(all_insights_platform) + len(all_insights_demographic) + len(all_insights_region)} bản ghi insights được lấy về.") # <-- SỬA
 
-            # Cập nhật DimDate
-            logger.info("Bước 4: Cập nhật bảng DimDate...")
-            min_date_str = min(rec['date_start'] for rec in all_insights_platform + all_insights_demographic)
-            max_date_str = max(rec['date_start'] for rec in all_insights_platform + all_insights_demographic)
+            # BƯỚC 3: Cập nhật DimDate
+            logger.info("Bước 3: Cập nhật bảng DimDate...")
+            all_insights_combined = all_insights_platform + all_insights_demographic + all_insights_region
+            min_date_str = min(rec['date_start'] for rec in all_insights_combined)
+            max_date_str = max(rec['date_start'] for rec in all_insights_combined)
             min_date = datetime.fromisoformat(min_date_str)
             max_date = datetime.fromisoformat(max_date_str)
             self.upsert_dates(min_date, max_date)
             logger.info("=> Hoàn thành cập nhật DimDate.")
 
-            # Cập nhật FactPerformance
-            logger.info("Bước 5: Cập nhật bảng FactPerformance...")
+            # BƯỚC 4: Cập nhật FactPerformance
+            logger.info("Bước 4: Cập nhật bảng FactPerformance...")
             self.upsert_performance_platform_data(all_insights_platform)
             self.upsert_performance_demographic_data(all_insights_demographic)
+            self.upsert_performance_region_data(all_insights_region)
             logger.info("=> Hoàn thành cập nhật FactPerformance.")
+
+            # BƯỚC 5: Làm giàu (Enrich) dữ liệu cho DimRegion
+            logger.info("Bước 5: Bắt đầu làm giàu dữ liệu Geo cho DimRegion (chỉ cho các region mới)...")
+            self._enrich_region_geo_data()
+            logger.info("=> Hoàn thành làm giàu DimRegion.")
 
         except Exception as e:
             logger.error(f"LỖI NGHIÊM TRỌNG trong quá trình làm mới dữ liệu: {e}", exc_info=True)

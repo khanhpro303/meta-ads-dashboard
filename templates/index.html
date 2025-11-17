@@ -55,15 +55,15 @@
                     <i data-feather="facebook" class="w-5 h-5 mr-3"></i>
                     Fanpage overview
                 </a>
-                <a href="#" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <a href="#" id="nav-chien-dich" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
                     <i data-feather="bar-chart-2" class="w-5 h-5 mr-3"></i>
                     Chiến dịch
                 </a>
-                <a href="#" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <a href="#" id="nav-huong-dan" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
                     <i data-feather="file-text" class="w-5 h-5 mr-3"></i>
                     Hướng dẫn về app
                 </a>
-                <a href="#" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <a href="#" id="nav-cai-dat" class="nav-link flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
                     <i data-feather="settings" class="w-5 h-5 mr-3"></i>
                     Cài đặt
                 </a>
@@ -725,6 +725,124 @@
             </div>
 
         </main>
+        <main id="panel-chien-dich" class="flex-1 overflow-y-auto p-8 hidden">
+            
+            <h1 class="text-3xl font-bold text-gray-900 mb-6">Phân tích Chiến dịch & Đối tượng</h1>
+    
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ Địa lý (Bản đồ)</h2>
+                <div id="folium-map-container" class="w-full bg-gray-50 border rounded-lg flex items-center justify-center min-h-[500px]">
+                    <p class="text-gray-500">Đang tải bản đồ...</p>
+                    </div>
+            </div>
+    
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Phân phối theo Giới tính</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="sticky top-0">
+                                <tr class="bg-gray-50 border-b-2 border-gray-100">
+                                    <th class="px-4 py-3 font-semibold text-gray-600">Giới tính</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Chi tiêu</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Lượt mua</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">CPA</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gender-table-body">
+                                <tr class="font-bold bg-gray-100 sticky bottom-0">
+                                    <td class="px-4 py-3">Tổng cộng</td>
+                                    <td id="gender-total-spend" class="px-4 py-3 text-right">0 đ</td>
+                                    <td id="gender-total-purchases" class="px-4 py-3 text-right">0</td>
+                                    <td id="gender-total-cpa" class="px-4 py-3 text-right">0 đ</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Phân phối theo Độ tuổi</h3>
+                    <div class="overflow-x-auto max-h-80"> <table class="w-full text-left text-sm">
+                            <thead class="sticky top-0">
+                                <tr class="bg-gray-50 border-b-2 border-gray-100">
+                                    <th class="px-4 py-3 font-semibold text-gray-600">Độ tuổi</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Chi tiêu</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Lượt mua</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">CPA</th>
+                                </tr>
+                            </thead>
+                            <tbody id="age-table-body">
+                                <tr class="font-bold bg-gray-100 sticky bottom-0">
+                                    <td class="px-4 py-3">Tổng cộng</td>
+                                    <td id="age-total-spend" class="px-4 py-3 text-right">0 đ</td>
+                                    <td id="age-total-purchases" class="px-4 py-3 text-right">0</td>
+                                    <td id="age-total-cpa" class="px-4 py-3 text-right">0 đ</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+    
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ Chi tiêu theo Giới tính & Độ tuổi</h2>
+                <div class="w-full min-h-[400px]">
+                    <canvas id="sex-age-allocate"></canvas>
+                </div>
+            </div>
+    
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Phân phối theo Địa lý (Tỉnh/Thành)</h3>
+                    <div class="overflow-x-auto max-h-96">
+                        <table class="w-full text-left text-sm">
+                            <thead class="sticky top-0">
+                                <tr class="bg-gray-50 border-b-2 border-gray-100">
+                                    <th class="px-4 py-3 font-semibold text-gray-600">Địa lý</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Chi tiêu</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">Lượt mua</th>
+                                    <th class="px-4 py-3 font-semibold text-gray-600 text-right">CPA</th>
+                                </tr>
+                            </thead>
+                            <tbody id="geo-table-body">
+                                <tr class="font-bold bg-gray-100 sticky bottom-0">
+                                    <td class="px-4 py-3">Tổng cộng</td>
+                                    <td id="geo-total-spend" class="px-4 py-3 text-right">0 đ</td>
+                                    <td id="geo-total-purchases" class="px-4 py-3 text-right">0</td>
+                                    <td id="geo-total-cpa" class="px-4 py-3 text-right">0 đ</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Tỷ trọng Chi tiêu theo Vùng miền</h3>
+                    <div class="w-full min-h-[350px] flex items-center justify-center">
+                        <canvas id="region-pie-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Phân bổ theo Vị trí quảng cáo (Waffle)</h2>
+                <div id="waffle-chart-container" class="w-full bg-gray-50 border rounded-lg flex items-center justify-center min-h-[300px]">
+                    <p class="text-gray-500">Biểu đồ sẽ được load ở đây</p>
+                </div>
+            </div>
+    
+        </main>
+        <main id="panel-huong-dan" class="flex-1 overflow-y-auto p-8 hidden">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6">Hướng dẫn về App</h1>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <p>Nội dung hướng dẫn sẽ được cập nhật ở đây.</p>
+            </div>
+        </main>
+        <main id="panel-cai-dat" class="flex-1 overflow-y-auto p-8 hidden">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6">Cài đặt</h1>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <p>Các tùy chọn cài đặt sẽ ở đây.</p>
+            </div>
+        </main>
         </div> <script>
     var MultiselectDropdownOptions = {
         txtAll: 'Tất cả',
@@ -747,7 +865,7 @@
                 BBI MKT AI Agent
             </h3>
             <button id="chat-minimize-btn" class="hover:bg-blue-700 p-1 rounded-full">
-                <i data-feather="chevron-down" class="w-6 h-6"></i>
+                <i data-feather="chevron-down" class_name="w-6 h-6"></i>
             </button>
         </div>
 

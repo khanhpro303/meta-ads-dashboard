@@ -660,6 +660,64 @@ class FacebookAdsExtractor:
                 break
         return all_insights
     
+    def get_all_insights_region(self, account_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None, date_preset: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Lấy tất cả dữ liệu insights theo từ cấp độ quảng cáo cho theo khu vực (region).
+        """
+        all_insights = []
+        url = f"{self.base_url}/{account_id}/insights"
+
+        params = {
+            'access_token': self.access_token,
+            'level': 'ad',
+            'limit': 100,
+            'fields': 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
+            'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
+            'breakdowns': 'region',
+        }
+
+        # Chỉ sử dụng date_preset nếu không có time_range.
+        if date_preset and date_preset in DATE_PRESET:
+            params['date_preset'] = date_preset
+            logger.info(f"Lấy tất cả dữ liệu insights (region) cho tài khoản {account_id} với khoảng '{date_preset}'...")
+        elif start_date and end_date:
+            params['time_range'] = json.dumps({'since': start_date, 'until': end_date})
+            logger.info(f"Lấy tất cả dữ liệu insights (region) cho tài khoản {account_id} từ {start_date} đến {end_date}...")
+        else:
+            # Thêm fallback để tránh lỗi
+            logger.error("Phải cung cấp date_preset hoặc (start_date, end_date) cho get_all_insights_region.")
+            return all_insights
+
+        page_count = 0
+        while url:
+            try:
+                page_count += 1
+                response = requests.get(url, params=params if page_count == 1 else {})
+                response.raise_for_status()
+                data = response.json()
+
+                insights_page = data.get('data', [])
+                if not insights_page:
+                    logger.info("Không tìm thấy thêm dữ liệu insights (region) nào.")
+                    break
+                    
+                all_insights.extend(insights_page)
+                logger.info(f"Đã lấy được {len(insights_page)} bản ghi insights (region) (Tổng: {len(all_insights)}).")
+
+                # Xử lý phân trang (Pagination)
+                next_page_url = data.get('paging', {}).get('next')
+                url = next_page_url # Nếu next_page_url là None, vòng lặp sẽ dừng
+            
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Lỗi khi lấy Insights (region) cho tài khoản {account_id} (Trang {page_count}): {e}")
+                if e.response is not None:
+                    logger.error(f"Response: {e.response.json()}")
+                break
+            except Exception as e:
+                logger.error(f"Lỗi không xác định: {e}")
+                break
+        return all_insights
+    
     def get_total_metric(self, account_id: str, metric_name: str, 
                          campaign_ids: Optional[List[str]] = None, 
                          adset_ids: Optional[List[str]] = None, 
