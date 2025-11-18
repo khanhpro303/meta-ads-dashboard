@@ -559,7 +559,11 @@ async function handleRefreshData() {
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
 
         // --- [BỔ SUNG LOGIC VALIDATION] ---
-        if (dateParams.start_date && dateParams.end_date) { 
+        if (dateParams.date_preset) {
+            // 1. Chặn ngay lập tức nếu dùng Preset (7 ngày qua, Tháng này...)
+            throw new Error("Làm mới: Vui lòng sử dụng 'Tùy chỉnh' và chọn tối đa 2 ngày.");
+        }
+        else if (dateParams.start_date && dateParams.end_date) { 
             const startDate = new Date(dateParams.start_date);
             const endDate = new Date(dateParams.end_date);
             const diffTime = Math.abs(endDate - startDate);
@@ -567,7 +571,7 @@ async function handleRefreshData() {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
 
             if (diffDays >= 2) {
-                // Nếu >= 3 ngày, báo lỗi và dừng lại
+                // Nếu >= 2 ngày, báo lỗi và dừng lại
                 throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1 ngày một lần.");
             }
         }
@@ -1131,7 +1135,7 @@ function renderTableData(data, errorMsg = null) {
         // Mặc định mở tab Tổng quan như cũ
         showPanel('panel-tong-quan'); 
     }
-    
+
 /**
  * Tải danh sách Fanpage vào dropdown
  */
@@ -1222,7 +1226,7 @@ async function handleFanpageRefreshData() {
         
         // --- [BỔ SUNG LOGIC VALIDATION] ---
         if (dateParams.date_preset) {
-            // [SỬA] 1. Chặn nếu người dùng chọn preset
+            // 1. Chặn nếu người dùng chọn preset
             throw new Error("Làm mới: Vui lòng sử dụng 'Tùy chỉnh' và chọn 1 ngày.");
 
         } else if (dateParams.start_date && dateParams.end_date) { 
