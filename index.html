@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meta Ads Dashboard</title>
-    <link href="static/css/styles.css" rel="stylesheet">
+    <link href="../static/css/styles.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
     <link rel="icon" type="image/png" href="../static/images/favicon.ico">
@@ -72,11 +72,23 @@
             </nav>
             <div class="p-4 border-t">
                 <div class="flex items-center">
-                    <img src="https://placehold.co/40x40/E0E7FF/4F46E5?text=BBI" alt="Avatar" class="rounded-full">
+                    <img src="https://placehold.co/40x40/E0E7FF/4F46E5?text={{ user.username[:2] | upper }}" alt="Avatar" class="rounded-full">
+                    
                     <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-800">BBI Co Ltd</p>
-                        <p class="text-xs text-gray-500">Quản trị viên</p>
+                        <p class="text-sm font-medium text-gray-800">{{ user.username }}</p>
+                        
+                        <p class="text-xs text-gray-500">
+                            {% if user.is_admin %}
+                                Quản trị viên
+                            {% else %}
+                                Nhân viên
+                            {% endif %}
+                        </p>
                     </div>
+                    
+                    <a href="/logout" class="ml-auto text-gray-400 hover:text-red-500" title="Đăng xuất">
+                        <i data-feather="log-out" class="w-4 h-4"></i>
+                    </a>
                 </div>
             </div>
         </aside>
@@ -891,9 +903,141 @@
     
         </main>
         <main id="panel-huong-dan" class="flex-1 overflow-y-auto p-8 hidden">
-            <h1 class="text-3xl font-bold text-gray-900 mb-6">Hướng dẫn về App</h1>
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                <p>Nội dung hướng dẫn sẽ được cập nhật ở đây.</p>
+            <div class="max-w-4xl mx-auto">
+                
+                <div class="mb-8 border-b border-gray-200 pb-6">
+                    <h1 class="text-3xl font-bold text-blue-700 mb-2 flex items-center">
+                        <span class="mr-3">📚</span> Hướng Dẫn Sử Dụng Meta Ads Dashboard
+                    </h1>
+                    <p class="text-gray-600 text-lg">Tài liệu quy chuẩn vận hành và khai thác dữ liệu hiệu quả.</p>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-blue-100 text-blue-600 p-2 rounded-lg mr-3"><i data-feather="compass"></i></span>
+                        1. Điều Hướng & Chức Năng
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-200">
+                                    <th class="p-3 font-semibold text-gray-700 w-1/4">Panel</th>
+                                    <th class="p-3 font-semibold text-gray-700">Chức năng chính</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr>
+                                    <td class="p-3 font-medium text-blue-600"><i data-feather="home" class="inline w-4 h-4 mr-1"></i> Tổng quan</td>
+                                    <td class="p-3 text-gray-600">Bức tranh toàn cảnh về dòng tiền (Chi tiêu vs Doanh thu). Theo dõi KPI cấp cao và hiệu quả chuyển đổi phễu (Funnel).</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-medium text-blue-600"><i data-feather="facebook" class="inline w-4 h-4 mr-1"></i> Fanpage Overview</td>
+                                    <td class="p-3 text-gray-600">Sức khỏe thương hiệu và Fanpage. Theo dõi tăng trưởng like, tương tác bài viết và Top Content hiệu quả nhất.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-medium text-blue-600"><i data-feather="bar-chart-2" class="inline w-4 h-4 mr-1"></i> Chiến dịch</td>
+                                    <td class="p-3 text-gray-600">Phân tích chuyên sâu (Deep-dive). Bao gồm Bản đồ nhiệt (Geo Map), Nhân khẩu học (Age/Gender) và Phân tích sản phẩm (Waffle Chart).</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-purple-100 text-purple-600 p-2 rounded-lg mr-3"><i data-feather="message-circle"></i></span>
+                        2. Lưu Ý Khi Dùng Chatbox AI
+                    </h2>
+                    
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                        <div class="flex">
+                            <div class="flex-shrink-0"><i data-feather="alert-triangle" class="text-yellow-500"></i></div>
+                            <div class="ml-3">
+                                <p class="text-sm text-yellow-700 font-bold">Nguyên tắc vàng:</p>
+                                <p class="text-sm text-yellow-700">"Hỏi cụ thể - Không viết tắt - Đúng tên riêng"</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="border border-red-200 rounded-lg p-4 bg-red-50">
+                            <h3 class="font-bold text-red-700 mb-2 flex items-center"><i data-feather="x-circle" class="w-4 h-4 mr-2"></i> Không nên (Mơ hồ)</h3>
+                            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                                <li>"Doanh thu sao rồi?"</li>
+                                <li>"Cái mũ E-22 bán tốt ko?"</li>
+                                <li>"Page dạo này thế nào?"</li>
+                            </ul>
+                        </div>
+                        <div class="border border-green-200 rounded-lg p-4 bg-green-50">
+                            <h3 class="font-bold text-green-700 mb-2 flex items-center"><i data-feather="check-circle" class="w-4 h-4 mr-2"></i> Nên (Cụ thể)</h3>
+                            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                                <li>"Tổng doanh thu (Purchase Value) tháng 10 là bao nhiêu?"</li>
+                                <li>"So sánh hiệu quả chiến dịch EGO_Oct_E-22 và LS2_Oct_FF800."</li>
+                                <li>"Số New Likes của fanpage LS2 Helmets Vietnam 7 ngày qua?"</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-red-100 text-red-600 p-2 rounded-lg mr-3"><i data-feather="tag"></i></span>
+                        3. Quy Định Đặt Tên (Naming Convention)
+                    </h2>
+                    
+                    <p class="text-gray-600 mb-4">Hệ thống tự động trích xuất dữ liệu (Waffle Chart) dựa trên tên chiến dịch. Việc tuân thủ là <span class="font-bold text-red-600">BẮT BUỘC</span>.</p>
+
+                    <div class="space-y-6">
+                        <div>
+                            <h3 class="font-semibold text-gray-800 mb-2">A. Tên Chiến Dịch (Campaign)</h3>
+                            <div class="bg-gray-800 text-white p-3 rounded-md font-mono text-sm mb-2">
+                                Brand_Thời gian_Sản phẩm/Mục tiêu_Ghi chú
+                            </div>
+                            <ul class="text-sm text-gray-600 space-y-2">
+                                <li><span class="text-green-600 font-bold">✔ Chuẩn (4 yếu tố):</span> <code>LS2_Dec 2025_FF800_PromoTet</code> ➔ Hệ thống lấy: <strong>FF800</strong></li>
+                                <li><span class="text-green-600 font-bold">✔ Chuẩn (3 yếu tố):</span> <code>EGO_Q4 2025_E-22</code> ➔ Hệ thống lấy: <strong>E-22</strong></li>
+                                <li><span class="text-red-600 font-bold">✘ Sai:</span> <code>LS2 Dec 2025 FF800</code> (Thiếu dấu gạch dưới <code>_</code>)</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <h3 class="font-semibold text-gray-800 mb-2">B. Tên Adset</h3>
+                                <div class="bg-gray-100 p-3 rounded-md text-sm border border-gray-200">
+                                    Cấu trúc: <code>Khu vực_Độ tuổi</code><br>
+                                    Ví dụ: <strong>VN_22+</strong>, <strong>HCM_18-35</strong>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-800 mb-2">C. Tên Ads</h3>
+                                <div class="bg-gray-100 p-3 rounded-md text-sm border border-gray-200">
+                                    Cấu trúc: <code>Tên SP_Định dạng_ID Bài</code><br>
+                                    Ví dụ: <strong>FF800_Video_ContentA</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-green-100 text-green-600 p-2 rounded-lg mr-3"><i data-feather="refresh-cw"></i></span>
+                        4. Hướng Dẫn Làm Mới Dữ Liệu
+                    </h2>
+                    <p class="text-gray-600 mb-4">Dữ liệu không tự động cập nhật Real-time. Bạn cần thao tác thủ công mỗi ngày.</p>
+
+                    <ol class="list-decimal list-inside space-y-3 text-gray-700">
+                        <li class="pl-2">Chọn khoảng thời gian cần cập nhật (Nên chọn <strong>"Hôm qua"</strong> hoặc <strong>1-2 ngày</strong> gần nhất).</li>
+                        <li class="pl-2">Nhấn nút <span class="inline-flex items-center px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-semibold text-gray-700"><i data-feather="refresh-cw" class="w-3 h-3 mr-1"></i> Làm mới</span> ở góc phải bộ lọc.</li>
+                        <li class="pl-2">Đợi hệ thống báo <strong>"Thành công"</strong> (khoảng 5-10 giây).</li>
+                        <li class="pl-2">Nhấn nút <span class="inline-flex items-center px-2 py-1 bg-blue-600 border border-blue-600 rounded text-xs font-semibold text-white"><i data-feather="check" class="w-3 h-3 mr-1"></i> Áp dụng</span> để xem số liệu mới.</li>
+                    </ol>
+                </div>
+
+                <div class="text-center text-gray-400 text-sm mt-8 mb-4">
+                    BBI Marketing Dashboard - Version 1.0
+                </div>
+
             </div>
         </main>
         <main id="panel-cai-dat" class="flex-1 overflow-y-auto p-8 hidden">
@@ -988,9 +1132,9 @@
             txtSelected: 'mục đã chọn'
         };
     </script>
-    
-    <script src="static/js/multiselect-dropdown.js"></script>
-    <script src="static/js/main.js"></script>
+
+    <script src="../static/js/multiselect-dropdown.js"></script>
+    <script src="../static/js/main.js"></script>
     
     <button id="chat-bubble" class="fixed bottom-8 right-8 bg-blue-600 text-white w-16 h-16 rounded-full shadow-2xl flex items-center justify-center cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-110">
         <i data-feather="message-square" class="w-8 h-8"></i>
@@ -1045,5 +1189,6 @@
 
         </div>
     </div>
+
 </body>
 </html>
