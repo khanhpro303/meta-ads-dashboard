@@ -1515,7 +1515,7 @@ def get_geo_map_data():
             df['radius_normalized'] = (df['impressions'] - imp_min) / (imp_max - imp_min)
         
         # Ánh xạ thang 0-1 sang thang pixel (ví dụ: 8px đến 40px)
-        min_radius, max_radius = 18, 70
+        min_radius, max_radius = 13, 52
         df['radius'] = df['radius_normalized'].apply(lambda x: min_radius + (x * (max_radius - min_radius)))
 
         # === 5. TẠO THANG MÀU (COLORMAP) CHO PURCHASE VALUE ===
@@ -1532,7 +1532,7 @@ def get_geo_map_data():
 
         # === 6. TẠO BẢN ĐỒ FOLIUM ===
         logger.info("Đang tạo bản đồ Folium...")
-        m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB dark_matter')
+        m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB positron')
         
         # Tạo một nhóm gom cụm (MarkerCluster)
         marker_cluster = MarkerCluster().add_to(m)
@@ -1736,7 +1736,7 @@ def get_campaign_performance_data():
             if total_spend > 0:
                 for row in geo_table:
                     percentage = row['spend'] / total_spend
-                    if percentage <= 0.10:
+                    if percentage <= 0.03:
                         others_spend += row['spend']
                     else:
                         labels.append(row['region_name'])
