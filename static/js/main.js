@@ -566,9 +566,9 @@ async function handleRefreshData() {
             // +1 để đếm cả ngày bắt đầu
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
 
-            if (diffDays >= 3) {
+            if (diffDays >= 2) {
                 // Nếu >= 3 ngày, báo lỗi và dừng lại
-                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1-2 ngày một lần.");
+                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1 ngày một lần.");
             }
         }
 
@@ -1203,19 +1203,22 @@ async function handleFanpageRefreshData() {
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
         
         // --- [BỔ SUNG LOGIC VALIDATION] ---
-        if (dateParams.start_date && dateParams.end_date) { 
+        if (dateParams.date_preset) {
+            // [SỬA] 1. Chặn nếu người dùng chọn preset
+            throw new Error("Làm mới: Vui lòng sử dụng 'Tùy chỉnh' và chọn 1 ngày.");
+
+        } else if (dateParams.start_date && dateParams.end_date) { 
+            // 2. Kiểm tra 'Tùy chỉnh' (giữ nguyên logic cũ)
             const startDate = new Date(dateParams.start_date);
             const endDate = new Date(dateParams.end_date);
             const diffTime = Math.abs(endDate - startDate);
-            // +1 để đếm cả ngày bắt đầu
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-            if (diffDays >= 3) {
+            if (diffDays >= 2) {
                 // Nếu >= 3 ngày, báo lỗi và dừng lại
-                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1-2 ngày một lần.");
+                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1 ngày một lần.");
             }
         }
-        // --- [KẾT THÚC BỔ SUNG] ---
         
         const response = await fetch('/api/refresh_fanpage', {
             method: 'POST',
