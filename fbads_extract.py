@@ -1178,74 +1178,75 @@ class FacebookAdsExtractor:
         return all_posts_data
 
 def main():
-    """
-    Hàm main (đã viết lại) để test và debug logic lấy page_fans
-    cho Fanpage "EGO Helmets".
-    """
     try:
         extractor = FacebookAdsExtractor()
         
-        logger.info("--- BẮT ĐẦU TEST DEBUG PAGE_FANS (EGO HELMETS) ---")
+        logger.info("--- BẮT ĐẦU DEBUG METRIC REACH ---")
         
-        # 1. Lấy tất cả Fanpages
-        logger.info("Đang lấy danh sách Fanpage...")
-        all_pages = extractor.get_all_fanpages()
-        
-        if not all_pages:
-            logger.error("Không tìm thấy Fanpage nào. Kiểm tra User Token (SECRET_KEY) và quyền 'pages_show_list'.")
+        # 1. Lấy danh sách tài khoản quảng cáo
+        accounts = extractor.get_all_ad_accounts()
+        if not accounts:
+            logger.error("Không tìm thấy tài khoản quảng cáo nào.")
             return
 
-        # 2. Tìm trang "EGO Helmets"
-        target_page_data = None
-        for page in all_pages:
-            # Dùng 'in' và 'lower()' để tìm
-            if 'ego helmets' in page.get('name', '').lower():
-                target_page_data = page
-                break
+        # Lấy tài khoản đầu tiên để test (hoặc bạn có thể filter theo tên)
+        target_account = accounts[4] 
+        account_id = target_account['id']
+        account_name = target_account['name']
         
-        if not target_page_data:
-            logger.error("Không tìm thấy Fanpage 'EGO Helmets' trong danh sách.")
-            logger.info("Các trang tìm thấy:")
-            for p in all_pages:
-                logger.info(f"- {p.get('name')}")
-            return
-            
-        page_id = target_page_data.get('id')
-        page_token = target_page_data.get('access_token')
-        page_name = target_page_data.get('name')
+        logger.info(f"Đang test với tài khoản: {account_name} ({account_id})")
+
+        # 2. Thiết lập thời gian test (Ví dụ: 7 ngày qua)
+        today = date.today()
+        end_date_obj = today - relativedelta(days=1) # Hôm qua (để chắc chắn có data)
+        start_date_obj = end_date_obj - relativedelta(days=6) # 7 ngày trước
         
-        if not page_token:
-            logger.error(f"Đã tìm thấy Page '{page_name}' nhưng không có Page Access Token.")
-            return
-
-        logger.info(f"Đã tìm thấy '{page_name}' (ID: {page_id}). Bắt đầu lấy metric 'page_fans'...")
-
-        total_fans = extractor.get_page_metrics_by_day(
-            page_id=page_id,
-            page_access_token=page_token,
-            start_date='2025-11-10',
-            end_date='2025-11-12'
+        # 3. TEST 1: Lấy Reach của cả khoảng 7 ngày (Standard Way)
+        logger.info(f"TEST 1: Lấy Reach tổng hợp 7 ngày ({start_date_obj} - {end_date_obj})...")
+        reach_7d = extractor.get_total_metric(
+            account_id=account_id,
+            metric_name='reach',
+            start_date=start_date_obj,
+            end_date=end_date_obj
         )
         
-        if total_fans is None:
-            logger.warning("Không lấy được dữ liệu 'page_fans'. "
-                         "Kiểm tra xem Page Token có quyền 'read_insights' không.")
-            return
+        # 4. TEST 2: Chỉ lấy Reach của ngày cuối cùng (User Hypothesis)
+        logger.info(f"TEST 2: Chỉ lấy Reach của ngày cuối ({end_date_obj})...")
+        reach_1d = extractor.get_total_metric(
+            account_id=account_id,
+            metric_name='reach',
+            start_date=end_date_obj,
+            end_date=end_date_obj
+        )
 
-        # 5. Lưu kết quả vào JSON
-        output_filename = "ego_helmets_page_fans_debug.json"
-        save_data = {
-            'debug_info': f"Debug metric 'page_fans' (lifetime) cho {page_name}",
-            'page_id': page_id,
-            'total_fans': total_fans,
-            'timestamp': datetime.now(pytz.utc).isoformat()
+        # 5. Xuất kết quả để so sánh
+        result_data = {
+            'account': account_name,
+            'debug_note': 'So sanh Reach 7 ngay vs Reach ngay cuoi cung',
+            'TEST_1_Range_7_Days': {
+                'period': f"{start_date_obj} to {end_date_obj}",
+                'raw_data': reach_7d,
+                'value': reach_7d[0].get('reach') if reach_7d else 0
+            },
+            'TEST_2_Single_Last_Day': {
+                'period': f"{end_date_obj}",
+                'raw_data': reach_1d,
+                'value': reach_1d[0].get('reach') if reach_1d else 0
+            }
         }
         
-        extractor.save_to_json(data=save_data, filename=output_filename)
+        filename = "debug_reach_comparison.json"
+        extractor.save_to_json(data=result_data, filename=filename)
         
-        logger.info(f"--- HOÀN TẤT DEBUG ---")
-        logger.info(f"Tổng số fan (trọn đời) của '{page_name}' là: {total_fans}")
-        logger.info(f"Kết quả đã được lưu vào: {output_filename}")
+        logger.info(f"--- KẾT QUẢ ---")
+        logger.info(f"Reach 7 ngày: {result_data['TEST_1_Range_7_Days']['value']}")
+        logger.info(f"Reach ngày cuối: {result_data['TEST_2_Single_Last_Day']['value']}")
+        logger.info(f"File chi tiết đã lưu tại: {filename}")
+        
+        if int(result_data['TEST_1_Range_7_Days']['value']) > int(result_data['TEST_2_Single_Last_Day']['value']):
+            logger.info("KẾT LUẬN: Reach 7 ngày LỚN HƠN Reach ngày cuối -> Reach là unique deduplicated, không phải accumulative snapshot.")
+        else:
+            logger.info("KẾT LUẬN: Reach xấp xỉ nhau (hoặc data ít) -> Cần kiểm tra thêm.")
 
     except Exception as e:
         logger.error(f"Lỗi không mong muốn trong hàm main: {e}", exc_info=True)

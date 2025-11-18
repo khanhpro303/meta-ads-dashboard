@@ -1,0 +1,26 @@
+{
+  "account": "BBI2025",
+  "debug_note": "So sanh Reach 7 ngay vs Reach ngay cuoi cung",
+  "TEST_1_Range_7_Days": {
+    "period": "2025-11-11 to 2025-11-17",
+    "raw_data": [
+      {
+        "reach": "976161",
+        "date_start": "2025-11-11",
+        "date_stop": "2025-11-17"
+      }
+    ],
+    "value": "976161"
+  },
+  "TEST_2_Single_Last_Day": {
+    "period": "2025-11-17",
+    "raw_data": [
+      {
+        "reach": "976161",
+        "date_start": "2025-11-11",
+        "date_stop": "2025-11-17"
+      }
+    ],
+    "value": "976161"
+  }
+}
