@@ -1114,6 +1114,24 @@ function renderTableData(data, errorMsg = null) {
 // --- [MỚI] CÁC HÀM LOGIC CHO FANPAGE OVERVIEW ---
 // ======================================================================
 
+// [MỚI] Logic tự động mở Panel dựa trên URL Param (để giữ trạng thái sau khi Admin submit form)
+    const urlParams = new URLSearchParams(window.location.search);
+    const activePanel = urlParams.get('panel');
+
+    if (activePanel === 'settings') {
+        const settingsLink = document.getElementById('nav-cai-dat');
+        if (settingsLink) {
+            // Nếu link tồn tại (nghĩa là user là admin), giả lập click vào nó
+            settingsLink.click();
+            
+            // Xóa param khỏi URL để nhìn cho sạch (không reload trang)
+            window.history.replaceState({}, document.title, "/");
+        }
+    } else {
+        // Mặc định mở tab Tổng quan như cũ
+        showPanel('panel-tong-quan'); 
+    }
+    
 /**
  * Tải danh sách Fanpage vào dropdown
  */

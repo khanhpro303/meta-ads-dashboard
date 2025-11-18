@@ -5,13 +5,14 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from flask import json
 import requests
-from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime, MetaData, Table, ForeignKey, func, Float, BigInteger, Integer, Date
+from sqlalchemy import UniqueConstraint, create_engine, Column, String, DateTime, MetaData, Table, ForeignKey, func, Float, BigInteger, Integer, Date, Boolean
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import pytz
 import time
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
+from flask_login import UserMixin
 
 # Tải biến môi trường từ file .env
 load_dotenv()
@@ -45,6 +46,19 @@ def parse_datetime_flexible(date_string: str) -> Optional[datetime]:
     return None
 
 # --- ĐỊNH NGHĨA STAR SCHEMA ---
+
+class User(Base, UserMixin):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False)
+    
+    # UserMixin của Flask-Login cần thuộc tính này, nhưng SQLalchemy 
+    # đôi khi xung đột, nên ta định nghĩa rõ ràng
+    def get_id(self):
+        return str(self.id)
 
 class DimAdAccount(Base):
     """

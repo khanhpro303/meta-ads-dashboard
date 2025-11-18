@@ -4,7 +4,10 @@ import os
 import logging
 from datetime import datetime, timedelta
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, abort
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from dotenv import load_dotenv
 from matplotlib.dates import relativedelta
 import requests
@@ -26,7 +29,8 @@ from database_manager import (
     DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, 
     FactPerformancePlatform, DimDate, DimPlatform, DimPlacement, 
     FactPerformanceDemographic, DimFanpage, FactPageMetricsDaily, 
-    FactPostPerformance, DimRegion, FactPerformanceRegion
+    FactPostPerformance, DimRegion, FactPerformanceRegion,
+    User
 )
 from ai_agent import AIAgent
 
@@ -39,6 +43,13 @@ load_dotenv()
 # --- KHỞI TẠO FLASK APP VÀ DATABASE MANAGER ---
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-meta-ads-secret-key')
+
+# --- CẤU HÌNH FLASK-LOGIN ---
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+
 db_manager = DatabaseManager()
 # Tạo tất cả các bảng nếu chưa tồn tại
 db_manager.create_all_tables()
@@ -49,6 +60,37 @@ try:
 except Exception as e:
     logger.error(f"KHÔNG THỂ KHỞI TẠO AI AGENT: {e}")
     ai_analyst = None
+
+# --- HELPER: TẠO USER ADMIN MẶC ĐỊNH KHI CHẠY LẦN ĐẦU ---
+def create_default_admin():
+    session = db_manager.SessionLocal()
+    try:
+        # Kiểm tra xem có user nào chưa
+        existing_user = session.query(User).first()
+        if not existing_user:
+            logger.info("Chưa có user. Đang tạo tài khoản Admin mặc định...")
+            # Admin / Admin@123 (Bạn nên đổi ngay sau khi login)
+            hashed_pw = generate_password_hash("Admin@123", method='pbkdf2:sha256')
+            new_admin = User(username="admin", password_hash=hashed_pw, is_admin=True)
+            session.add(new_admin)
+            session.commit()
+            logger.info("Đã tạo user: admin / Admin@123")
+    except Exception as e:
+        logger.error(f"Lỗi tạo admin mặc định: {e}")
+    finally:
+        session.close()
+
+# Gọi hàm này ngay khi khởi động app
+create_default_admin()
+
+# --- FLASK-LOGIN USER LOADER ---
+@login_manager.user_loader
+def load_user(user_id):
+    session = db_manager.SessionLocal()
+    try:
+        return session.query(User).get(int(user_id))
+    finally:
+        session.close()
 
 # ======================================================================
 # HELPER FUNCTION - XỬ LÝ DATE PRESET
@@ -116,17 +158,124 @@ def _calculate_date_range(date_preset: str, today: datetime.date = None) -> tupl
     return start_date, end_date
 
 # ======================================================================
+# AUTHENTICATION ROUTES (MỚI)
+# ======================================================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        session = db_manager.SessionLocal()
+        user = session.query(User).filter_by(username=username).first()
+        session.close()
+
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
+            return redirect(url_for('index'))
+        else:
+            flash('Sai tên đăng nhập hoặc mật khẩu.', 'danger')
+            
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# ======================================================================
+# ADMIN ROUTES (MỚI)
+# ======================================================================
+
+@app.route('/admin')
+@login_required
+def admin_panel():
+    if not current_user.is_admin:
+        return "Access Denied: Bạn không phải Admin", 403
+    
+    session = db_manager.SessionLocal()
+    users = session.query(User).all()
+    session.close()
+    return render_template('admin.html', users=users)
+
+@app.route('/admin/create_user', methods=['POST'])
+@login_required
+def create_user():
+    if not current_user.is_admin:
+        abort(403)
+        
+    username = request.form.get('username')
+    password = request.form.get('password')
+    is_admin = True if request.form.get('is_admin') == 'on' else False
+    
+    session = db_manager.SessionLocal()
+    try:
+        existing = session.query(User).filter_by(username=username).first()
+        if existing:
+            flash('Username đã tồn tại!', 'error')
+        else:
+            hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
+            new_user = User(username=username, password_hash=hashed_pw, is_admin=is_admin)
+            session.add(new_user)
+            session.commit()
+            flash(f'Đã tạo user {username}', 'success')
+    except Exception as e:
+        logger.error(f"Lỗi tạo user: {e}")
+        flash('Lỗi server', 'error')
+    finally:
+        session.close()
+    
+    # QUAN TRỌNG: Redirect về index với tham số ?panel=settings để JS tự mở lại tab
+    return redirect(url_for('index', panel='settings'))
+
+@app.route('/admin/change_password', methods=['POST'])
+@login_required
+def change_password():
+    if not current_user.is_admin:
+        abort(403)
+        
+    user_id = request.form.get('user_id')
+    new_password = request.form.get('new_password')
+    
+    session = db_manager.SessionLocal()
+    try:
+        user = session.query(User).get(int(user_id))
+        if user:
+            user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+            session.commit()
+            flash(f'Đã đổi mật khẩu cho {user.username}', 'success')
+        else:
+            flash('Không tìm thấy user', 'error')
+    finally:
+        session.close()
+        
+    return redirect(url_for('index', panel='settings'))
+
+# ======================================================================
 # API ENDPOINTS - TRUY VẤN TRỰC TIẾP TỪ DATABASE
 # ======================================================================
 
 @app.route('/')
+@login_required
 def index():
-    """
-    Render trang dashboard chính.
-    """
-    return render_template('index.html')
+    # Mặc định users là rỗng
+    users_list = []
+    
+    # Nếu là Admin, lấy danh sách User để hiển thị trong panel Cài đặt
+    if current_user.is_admin:
+        session = db_manager.SessionLocal()
+        try:
+            users_list = session.query(User).all()
+        finally:
+            session.close()
+
+    # Truyền users vào template
+    return render_template('index.html', user=current_user, users=users_list)
 
 @app.route('/api/refresh', methods=['POST'])
+@login_required
 def refresh_data():
     """
     Kích hoạt quy trình làm mới dữ liệu (ETL) từ Meta Ads API vào database.
@@ -165,6 +314,7 @@ def refresh_data():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/accounts', methods=['GET'])
+@login_required
 def get_accounts():
     """
     Lấy danh sách tài khoản quảng cáo từ bảng DimAdAccount.
@@ -182,6 +332,7 @@ def get_accounts():
         session.close()
 
 @app.route('/api/campaigns', methods=['POST'])
+@login_required
 def get_campaigns():
     """
     Lấy danh sách chiến dịch từ bảng DimCampaign dựa trên account_id và filter theo ngày được chọn.
@@ -222,6 +373,7 @@ def get_campaigns():
         session.close()
 
 @app.route('/api/adsets', methods=['POST'])
+@login_required
 def get_adsets():
     """
     Lấy danh sách adset từ bảng DimAdset dựa trên danh sách campaign_ids và filter theo ngày được chọn.
@@ -265,6 +417,7 @@ def get_adsets():
         session.close()
 
 @app.route('/api/ads', methods=['POST'])
+@login_required
 def get_ads():
     """
     Lấy danh sách ads từ bảng DimAd dựa trên danh sách adset_ids được chọn và filter theo ngày được chọn.
@@ -305,6 +458,7 @@ def get_ads():
         session.close()
 
 @app.route('/api/overview_data', methods=['POST'])
+@login_required
 def get_overview_data():
     """
     Tổng hợp dữ liệu scorecard.
@@ -568,6 +722,7 @@ def get_overview_data():
         session.close()
 
 @app.route('/api/chart_data', methods=['POST'])
+@login_required
 def get_chart_data():
     """
     Lấy dữ liệu đã được nhóm theo ngày để vẽ biểu đồ đường.
@@ -675,6 +830,7 @@ def get_chart_data():
         session.close()
 
 @app.route('/api/breakdown_chart', methods=['POST'])
+@login_required
 def get_breakdown_chart_data():
     """
     Lấy dữ liệu đã được nhóm theo một chiều (dimension) cụ thể
@@ -847,6 +1003,7 @@ def get_breakdown_chart_data():
         session.close()
 
 @app.route('/api/table_data', methods=['POST'])
+@login_required
 def get_table_data():
     """
     Lấy dữ liệu hiệu suất đã được nhóm theo chiến dịch để hiển thị trong bảng. Chỉ lấy top 10 chiến dịch theo số lượt mua (purchases).
@@ -949,6 +1106,7 @@ def get_table_data():
         session.close()
 
 @app.route('/api/chat', methods=['POST'])
+@login_required
 def handle_chat():
     """
     Nhận tin nhắn từ người dùng và trả về câu trả lời của AI.
@@ -974,6 +1132,7 @@ def handle_chat():
         return jsonify({'error': str(e)}), 500
     
 @app.route('/api/refresh_fanpage', methods=['POST'])
+@login_required
 def refresh_data_fanpage():
     """
     Kích hoạt quy trình làm mới dữ liệu (ETL) cho FANPAGE vào database.
@@ -1016,6 +1175,7 @@ def refresh_data_fanpage():
 # ======================================================================
 
 @app.route('/api/fanpage/list', methods=['GET'])
+@login_required
 def get_fanpage_list():
     """
     Lấy danh sách Fanpage (ID, Name) từ dim_fanpage để điền vào
@@ -1037,6 +1197,7 @@ def get_fanpage_list():
         session.close()
 
 @app.route('/api/fanpage/overview_data', methods=['POST'])
+@login_required
 def get_fanpage_overview_data():
     """
     Lấy TOÀN BỘ dữ liệu cho Panel Fanpage Overview, bao gồm:
@@ -1302,6 +1463,7 @@ def get_fanpage_overview_data():
         session.close()
 
 @app.route('/api/fanpage/cover', methods=['GET'])
+@login_required
 def get_fanpage_cover():
     """
     Lấy URL ảnh bìa (cover source) cho một page_id cụ thể.
@@ -1414,6 +1576,7 @@ def get_fanpage_cover():
 # ======================================================================
 
 @app.route('/api/geo_map_data', methods=['POST'])
+@login_required
 def get_geo_map_data():
     """
     Tạo và trả về HTML cho một bản đồ Folium dựa trên bộ lọc.
@@ -1576,6 +1739,7 @@ def get_geo_map_data():
         session.close()
 
 @app.route('/api/camp_performance', methods=['POST'])
+@login_required
 def get_campaign_performance_data():
     """
     Lấy dữ liệu tổng hợp cho Panel Chiến dịch, bao gồm:
@@ -1777,9 +1941,8 @@ def get_campaign_performance_data():
     finally:
         session.close()
 
-# (Dán vào cuối file app.py, ngay trước if __name__ == '__main__':)
-
 @app.route('/api/age_gender_chart', methods=['POST'])
+@login_required
 def get_age_gender_chart_data():
     """
     Lấy dữ liệu cho biểu đồ cột đôi (grouped bar):
@@ -1911,6 +2074,7 @@ def get_age_gender_chart_data():
         session.close()
 
 @app.route('/api/drilldown_chart', methods=['POST'])
+@login_required
 def get_drilldown_chart_data():
     """
     Endpoint cho các biểu đồ drill-down (Top 5).
@@ -2107,6 +2271,7 @@ def get_drilldown_chart_data():
         session.close()
 
 @app.route('/api/waffle_chart', methods=['POST'])
+@login_required
 def get_waffle_chart_data():
     """
     [MỚI] Lấy dữ liệu và tạo biểu đồ Waffle cho Purchase Value theo Campaign.

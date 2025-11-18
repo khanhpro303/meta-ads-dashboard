@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <link href="../static/css/styles.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 p-10">
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded shadow">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold">Quản lý Tài khoản</h1>
+            <a href="/" class="text-blue-500 hover:underline">← Quay lại Dashboard</a>
+        </div>
+
+        <div class="mb-8 p-4 border rounded bg-gray-50">
+            <h3 class="font-bold mb-2">Tạo User Mới</h3>
+            <form action="/admin/create_user" method="POST" class="flex gap-4 items-end">
+                <div>
+                    <label class="block text-xs">Username</label>
+                    <input type="text" name="username" class="border p-1 rounded" required>
+                </div>
+                <div>
+                    <label class="block text-xs">Password</label>
+                    <input type="text" name="password" class="border p-1 rounded" required>
+                </div>
+                <div class="flex items-center mb-2">
+                    <input type="checkbox" name="is_admin" id="is_admin" class="mr-1">
+                    <label for="is_admin" class="text-sm">Là Admin?</label>
+                </div>
+                <button type="submit" class="bg-green-500 text-white px-4 py-1 rounded text-sm">Thêm</button>
+            </form>
+        </div>
+
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="p-2">ID</th>
+                    <th class="p-2">Username</th>
+                    <th class="p-2">Role</th>
+                    <th class="p-2">Đổi mật khẩu</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr class="border-b">
+                    <td class="p-2">{{ u.id }}</td>
+                    <td class="p-2">{{ u.username }}</td>
+                    <td class="p-2">
+                        {% if u.is_admin %}
+                        <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded">Admin</span>
+                        {% else %}
+                        <span class="bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded">User</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-2">
+                        <form action="/admin/change_password" method="POST" class="flex gap-2">
+                            <input type="hidden" name="user_id" value="{{ u.id }}">
+                            <input type="text" name="new_password" placeholder="Mật khẩu mới" class="border p-1 text-xs rounded w-32" required>
+                            <button type="submit" class="bg-blue-500 text-white px-2 py-1 text-xs rounded">Lưu</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
