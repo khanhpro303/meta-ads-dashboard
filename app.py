@@ -43,6 +43,7 @@ load_dotenv()
 # --- KHỞI TẠO FLASK APP VÀ DATABASE MANAGER ---
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-meta-ads-secret-key')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) # Tự đăng xuất sau 30 phút
 
 # --- CẤU HÌNH FLASK-LOGIN ---
 login_manager = LoginManager()
@@ -172,6 +173,7 @@ def login():
         session.close()
 
         if user and check_password_hash(user.password_hash, password):
+            session.permanent = True
             login_user(user)
             return redirect(url_for('index'))
         else:
