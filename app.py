@@ -528,7 +528,12 @@ def get_overview_data():
                 func.sum(FactPerformancePlatform.purchase_value).label('total_purchase_value'),
                 func.sum(FactPerformancePlatform.post_engagement).label('total_post_engagement'),
                 func.sum(FactPerformancePlatform.link_click).label('total_link_click')
-            ).join(DimDate, FactPerformancePlatform.date_key == DimDate.date_key)
+            ).join(DimDate, FactPerformancePlatform.date_key == DimDate.date_key
+            ).join(
+                DimCampaign, FactPerformancePlatform.campaign_id == DimCampaign.campaign_id
+            ).filter(
+                DimCampaign.ad_account_id == account_id
+            )
 
             if period_start and period_end:
                 query = query.filter(DimDate.full_date.between(period_start, period_end))
@@ -735,6 +740,7 @@ def get_chart_data():
     session = db_manager.SessionLocal()
     try:
         data = request.get_json()
+        account_id = data.get('account_id')
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
@@ -755,6 +761,10 @@ def get_chart_data():
             func.sum(FactPerformancePlatform.impressions).label('daily_impressions')
         ).join(
             FactPerformancePlatform, FactPerformancePlatform.date_key == DimDate.date_key
+        ).join(
+            DimCampaign, FactPerformancePlatform.campaign_id == DimCampaign.campaign_id
+        ).filter(
+            DimCampaign.ad_account_id == account_id
         ).filter(
             DimDate.full_date.between(start_date, end_date)
         )
