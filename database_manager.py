@@ -887,13 +887,13 @@ class DatabaseManager:
                 prepared_data.append({
                     'date_key': date_key,
                     'page_id': record.get('page_id'),
-                    'page_fans': record.get('page_fans', 0),
-                    'page_impressions': record.get('page_impressions', 0),
+                    'page_fans': record.get('page_follows', 0),
+                    'page_impressions': record.get('page_media_view', 0),
                     'page_post_engagements': record.get('page_post_engagements', 0),
                     'page_video_views': record.get('page_video_views', 0),
                     'page_impressions_unique': record.get('page_impressions_unique', 0),
-                    'page_fan_removes': record.get('page_fan_removes', 0),
-                    'page_fan_adds_unique': record.get('page_fan_adds_unique', 0)
+                    'page_fan_removes': record.get('page_daily_unfollows_unique', 0),
+                    'page_fan_adds_unique': record.get('page_daily_follows_unique', 0)
                 })
 
             if not prepared_data:

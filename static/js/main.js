@@ -1857,7 +1857,9 @@ function renderCDPerformanceData(data) {
     // --- 3. Bảng Địa lý ---
     const geoTableBody = document.getElementById('geo-table-body');
     let geoHtml = '';
-    let geoTotalSpend = 0, geoTotalPurchases = 0;
+    let geoTotalSpend = 0;
+    let geoTotalPurchases = 0;
+    // Không cộng dồn CPA, chỉ cộng dồn Spend và Purchases
     
     if (data.geo_table.length > 0) {
         data.geo_table.forEach(row => {
@@ -1869,21 +1871,23 @@ function renderCDPerformanceData(data) {
                     <td class="px-4 py-2.5 text-right">${formatCurrency(row.cpa)}</td>
                 </tr>
             `;
+            // Cộng dồn 2 chỉ số gốc
             geoTotalSpend += Number(row.spend) || 0;
             geoTotalPurchases += Number(row.purchases) || 0;
         });
     } else {
         geoHtml = '<tr><td colspan="4" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>';
     }
-        
-    // [SỬA LỖI] Tính toán và Thêm dòng "Tổng cộng" vào chuỗi HTML
-    const avgCPA = geoTotalPurchases > 0 ? (geoTotalSpend / geoTotalPurchases) : 0;
+    
+    // Tính CPA tổng (Total CPA) dựa trên Tổng Spend / Tổng Purchases
+    const totalAvgCPA = geoTotalPurchases > 0 ? (geoTotalSpend / geoTotalPurchases) : 0;
+    
     geoHtml += `
         <tr class="font-bold bg-gray-100 sticky bottom-0">
             <td class="px-4 py-3">Tổng cộng</td>
             <td class="px-4 py-3 text-right">${formatCurrency(geoTotalSpend)}</td>
             <td class="px-4 py-3 text-right">${formatNumber(geoTotalPurchases)}</td>
-            <td class="px-4 py-3 text-right">${formatCurrency(avgCPA)}</td>
+            <td class="px-4 py-3 text-right">${formatCurrency(totalAvgCPA)}</td>
         </tr>
     `;
     geoTableBody.innerHTML = geoHtml; // Ghi đè bằng HTML hoàn chỉnh

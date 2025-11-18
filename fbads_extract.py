@@ -895,13 +895,13 @@ class FacebookAdsExtractor:
         # 2. Thiết lập metrics
         if not metrics_list:
             metrics_list = [
-                'page_fans', # Accumulative lifetime
-                'page_impressions', 
+                'page_follows', # Accumulative lifetime 
+                'page_media_view', # Page impression
                 'page_post_engagements', 
                 'page_video_views',
                 'page_impressions_unique',
-                'page_fan_removes',
-                'page_fan_adds_unique'
+                'page_daily_unfollows_unique',
+                'page_daily_follows_unique'
             ]
         metrics_str = ",".join(metrics_list)
         
@@ -914,6 +914,7 @@ class FacebookAdsExtractor:
             'period': 'day',
             'since': start_date,
             'until': end_date,
+            'debug': 'all',
             'limit': 100 # Yêu cầu tối đa 100 ngày mỗi lần
         }
         
@@ -1049,7 +1050,7 @@ class FacebookAdsExtractor:
         if not metrics_list:
             metrics_list = [
                 'post_reactions_like_total',
-                'post_impressions',
+                'post_impressions_unique',
                 'post_clicks'
             ]
         metrics_str = ",".join(metrics_list)
@@ -1126,8 +1127,13 @@ class FacebookAdsExtractor:
                         # Chỉ lấy metric 'lifetime' như bạn yêu cầu
                         if metric_period == 'lifetime' and metric_name in metrics_list:
                             metric_value = metric.get('values', [{}])[0].get('value', 0)
-                            # Thêm thẳng vào post_data (ví dụ: 'post_impressions': 12345)
-                            post_data[metric_name] = metric_value
+                            if metric_name == 'post_impressions_unique':
+                                # API trả về 'post_impressions_unique'
+                                # nhưng ta lưu là 'post_impressions' để CSDL không bị ảnh hưởng
+                                post_data['post_impressions'] = metric_value
+                            elif metric_name in metrics_list:
+                                # Các metric khác (post_clicks, post_reactions_like_total)
+                                post_data[metric_name] = metric_value
                     
                     # Gán giá trị 0 cho các metric không tìm thấy (để đảm bảo cột)
                     for m in metrics_list:
@@ -1172,30 +1178,77 @@ class FacebookAdsExtractor:
         return all_posts_data
 
 def main():
+    """
+    Hàm main (đã viết lại) để test và debug logic lấy page_fans
+    cho Fanpage "EGO Helmets".
+    """
     try:
         extractor = FacebookAdsExtractor()
-        if extractor.test_connection():
-            accounts = extractor.get_all_ad_accounts()
-            if accounts:
-                # Test xuất all insights
-                first_account_id = accounts[4]['id']
-                # Test xuất cho ngày 11-11-2025 thôi
-                start_date = '2025-09-01'
-                end_date = '2025-09-10'
-                date_preset = 'last_7d'
-                # Test lấy chiến dịch
-                campaigns = extractor.get_campaigns_for_account(account_id=first_account_id, start_date=start_date, end_date=end_date)    
-                # Lấy toàn bộ insights
-                insights = extractor.get_all_insights_demo(account_id=first_account_id, start_date=start_date, end_date=end_date)
-                # Lưu
-                extractor.save_to_json(data={
-                    'account_id': first_account_id,
-                    'insights': insights
-                }, filename="fbads_sample_data.json")
-        else:
-            logger.error("Không thể kết nối đến Facebook API với token hiện tại.")
+        
+        logger.info("--- BẮT ĐẦU TEST DEBUG PAGE_FANS (EGO HELMETS) ---")
+        
+        # 1. Lấy tất cả Fanpages
+        logger.info("Đang lấy danh sách Fanpage...")
+        all_pages = extractor.get_all_fanpages()
+        
+        if not all_pages:
+            logger.error("Không tìm thấy Fanpage nào. Kiểm tra User Token (SECRET_KEY) và quyền 'pages_show_list'.")
+            return
+
+        # 2. Tìm trang "EGO Helmets"
+        target_page_data = None
+        for page in all_pages:
+            # Dùng 'in' và 'lower()' để tìm
+            if 'ego helmets' in page.get('name', '').lower():
+                target_page_data = page
+                break
+        
+        if not target_page_data:
+            logger.error("Không tìm thấy Fanpage 'EGO Helmets' trong danh sách.")
+            logger.info("Các trang tìm thấy:")
+            for p in all_pages:
+                logger.info(f"- {p.get('name')}")
+            return
+            
+        page_id = target_page_data.get('id')
+        page_token = target_page_data.get('access_token')
+        page_name = target_page_data.get('name')
+        
+        if not page_token:
+            logger.error(f"Đã tìm thấy Page '{page_name}' nhưng không có Page Access Token.")
+            return
+
+        logger.info(f"Đã tìm thấy '{page_name}' (ID: {page_id}). Bắt đầu lấy metric 'page_fans'...")
+
+        total_fans = extractor.get_page_metrics_by_day(
+            page_id=page_id,
+            page_access_token=page_token,
+            start_date='2025-11-10',
+            end_date='2025-11-12'
+        )
+        
+        if total_fans is None:
+            logger.warning("Không lấy được dữ liệu 'page_fans'. "
+                         "Kiểm tra xem Page Token có quyền 'read_insights' không.")
+            return
+
+        # 5. Lưu kết quả vào JSON
+        output_filename = "ego_helmets_page_fans_debug.json"
+        save_data = {
+            'debug_info': f"Debug metric 'page_fans' (lifetime) cho {page_name}",
+            'page_id': page_id,
+            'total_fans': total_fans,
+            'timestamp': datetime.now(pytz.utc).isoformat()
+        }
+        
+        extractor.save_to_json(data=save_data, filename=output_filename)
+        
+        logger.info(f"--- HOÀN TẤT DEBUG ---")
+        logger.info(f"Tổng số fan (trọn đời) của '{page_name}' là: {total_fans}")
+        logger.info(f"Kết quả đã được lưu vào: {output_filename}")
+
     except Exception as e:
-        logger.error(f"Lỗi không mong muốn: {e}")
+        logger.error(f"Lỗi không mong muốn trong hàm main: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

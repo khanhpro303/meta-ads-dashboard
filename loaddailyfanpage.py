@@ -17,7 +17,7 @@ logging.basicConfig(
 # Ngày bắt đầu (bao gồm)
 START_DATE = date(2025, 8, 1)
 # Ngày kết thúc (bao gồm)
-END_DATE = date(2025, 11, 15)
+END_DATE = date(2025, 11, 17)
 # Thời gian chờ (giây) giữa mỗi lần nạp dữ liệu
 WAIT_SECONDS = 10
 # ------------------

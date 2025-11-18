@@ -1743,7 +1743,7 @@ def get_campaign_performance_data():
                         data.append(row['spend'])
                 
                 if others_spend > 0:
-                    labels.append('Khác (<= 10%)')
+                    labels.append('Khác (<= 3%)')
                     data.append(others_spend)
 
         # Tự động tạo dải màu (giống hàm get_breakdown_chart_data)
