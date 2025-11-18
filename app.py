@@ -853,6 +853,10 @@ def get_breakdown_chart_data():
     session = db_manager.SessionLocal()
     try:
         data = request.get_json()
+
+        account_id = data.get('account_id')
+        if not account_id:
+            return jsonify({'error': 'Thiếu account_id.'}), 400
         
         # === 1. Lấy tham số động ===
         metric_name = data.get('metric', 'purchases')
@@ -953,6 +957,10 @@ def get_breakdown_chart_data():
             metric_aggregator # Đây là (e.g., func.sum(FactTable.spend).label('total_metric'))
         ).join(
             DimDate, FactTable.date_key == DimDate.date_key # JOIN với bảng DimDate
+        ).join(
+            DimCampaign, FactTable.campaign_id == DimCampaign.campaign_id
+        ).filter(
+            DimCampaign.ad_account_id == account_id
         )
 
         # Thêm JOIN động (cho placement/platform)
