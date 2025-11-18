@@ -72,11 +72,23 @@
             </nav>
             <div class="p-4 border-t">
                 <div class="flex items-center">
-                    <img src="https://placehold.co/40x40/E0E7FF/4F46E5?text=BBI" alt="Avatar" class="rounded-full">
+                    <img src="https://placehold.co/40x40/E0E7FF/4F46E5?text={{ user.username[:2] | upper }}" alt="Avatar" class="rounded-full">
+                    
                     <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-800">BBI Co Ltd</p>
-                        <p class="text-xs text-gray-500">Quản trị viên</p>
+                        <p class="text-sm font-medium text-gray-800">{{ user.username }}</p>
+                        
+                        <p class="text-xs text-gray-500">
+                            {% if user.is_admin %}
+                                Quản trị viên
+                            {% else %}
+                                Nhân viên
+                            {% endif %}
+                        </p>
                     </div>
+                    
+                    <a href="/logout" class="ml-auto text-gray-400 hover:text-red-500" title="Đăng xuất">
+                        <i data-feather="log-out" class="w-4 h-4"></i>
+                    </a>
                 </div>
             </div>
         </aside>
@@ -988,7 +1000,7 @@
             txtSelected: 'mục đã chọn'
         };
     </script>
-    
+
     <script src="../static/js/multiselect-dropdown.js"></script>
     <script src="../static/js/main.js"></script>
     
