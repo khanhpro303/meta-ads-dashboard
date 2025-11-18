@@ -557,6 +557,21 @@ async function handleRefreshData() {
     try {
         const dateParams = getDateFilterParams(true);
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
+
+        // --- [BỔ SUNG LOGIC VALIDATION] ---
+        if (dateParams.start_date && dateParams.end_date) { 
+            const startDate = new Date(dateParams.start_date);
+            const endDate = new Date(dateParams.end_date);
+            const diffTime = Math.abs(endDate - startDate);
+            // +1 để đếm cả ngày bắt đầu
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+
+            if (diffDays >= 3) {
+                // Nếu >= 3 ngày, báo lỗi và dừng lại
+                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1-2 ngày một lần.");
+            }
+        }
+
         const response = await fetch('/api/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -572,6 +587,7 @@ async function handleRefreshData() {
         handleApplyFilters(); 
     } catch (error) {
         console.error('Lỗi khi tải dữ liệu:', error);
+        // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
         showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
     } finally {
         setButtonIdle(button, originalText);
@@ -1178,6 +1194,21 @@ async function handleFanpageRefreshData() {
         const dateParams = getFanpageDateFilterParams(true);
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
         
+        // --- [BỔ SUNG LOGIC VALIDATION] ---
+        if (dateParams.start_date && dateParams.end_date) { 
+            const startDate = new Date(dateParams.start_date);
+            const endDate = new Date(dateParams.end_date);
+            const diffTime = Math.abs(endDate - startDate);
+            // +1 để đếm cả ngày bắt đầu
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+            if (diffDays >= 3) {
+                // Nếu >= 3 ngày, báo lỗi và dừng lại
+                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1-2 ngày một lần.");
+            }
+        }
+        // --- [KẾT THÚC BỔ SUNG] ---
+        
         const response = await fetch('/api/refresh_fanpage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1197,6 +1228,7 @@ async function handleFanpageRefreshData() {
 
     } catch (error) {
         console.error('Lỗi khi tải dữ liệu Fanpage:', error);
+        // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
         showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
     } finally {
         setButtonIdle(button, originalText);
