@@ -960,21 +960,31 @@ function getPieChartPayload() {
 }
 
 function getDateFilterParams(forRefresh = false) {
-    // (Giữ nguyên)
     const timeFilter = document.getElementById('filter-time');
     let date_preset = timeFilter.value;
     let start_date = document.getElementById('date-from').value;
     let end_date = document.getElementById('date-to').value;
     const today = new Date().toISOString().split('T')[0];
-    if (forRefresh && date_preset !== 'custom') { end_date = today; }
-    if (date_preset !== 'custom') { start_date = null; } else {
+
+    if (date_preset !== 'custom') {
+        start_date = null;
+        // [SỬA LỖI] Luôn đặt end_date là 'today' khi dùng preset
+        // để backend (app.py) luôn dùng 'today' làm mốc tính toán
+        end_date = today; 
+    } else {
+        // (Logic 'custom' giữ nguyên)
         if (!start_date || !end_date) {
             showNotification('Tùy chỉnh: Vui lòng chọn Từ ngày và Đến ngày!', 'error');
             return null;
         }
         date_preset = null;
     }
-    if (!end_date) { end_date = today; }
+    
+    // Fallback cuối cùng (nếu 'custom' nhưng end_date rỗng)
+    if (!end_date) { 
+        end_date = today; 
+    }
+
     if (date_preset) {
         return { date_preset: date_preset, end_date: end_date };
     } else {
@@ -1154,12 +1164,10 @@ function getFanpageDateFilterParams(forRefresh = false) {
     let end_date = elFpDateTo.value;
     const today = new Date().toISOString().split('T')[0];
 
-    if (forRefresh && date_preset !== 'custom') {
-        end_date = today;
-    }
-
     if (date_preset !== 'custom') {
         start_date = null; 
+        // [SỬA LỖI] Luôn đặt end_date là 'today' khi dùng preset
+        end_date = today;
     } else {
         if (!start_date || !end_date) {
             showNotification('Tùy chỉnh: Vui lòng chọn Từ ngày và Đến ngày!', 'error');
@@ -1585,6 +1593,8 @@ function getCDDateFilterParams() {
 
     if (date_preset !== 'custom') {
         start_date = null; 
+        // [SỬA LỖI] Luôn đặt end_date là 'today' khi dùng preset
+        end_date = today;
     } else {
         if (!start_date || !end_date) {
             showNotification('Tùy chỉnh: Vui lòng chọn Từ ngày và Đến ngày!', 'error');
