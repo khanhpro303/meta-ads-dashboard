@@ -12,6 +12,7 @@ import re
 from sqlalchemy import func, select, and_, case
 import pandas as pd
 import folium
+from folium.plugins import MarkerCluster
 import branca.colormap as cm
 import io
 import base64
@@ -1514,7 +1515,7 @@ def get_geo_map_data():
             df['radius_normalized'] = (df['impressions'] - imp_min) / (imp_max - imp_min)
         
         # Ánh xạ thang 0-1 sang thang pixel (ví dụ: 8px đến 40px)
-        min_radius, max_radius = 8, 40
+        min_radius, max_radius = 18, 70
         df['radius'] = df['radius_normalized'].apply(lambda x: min_radius + (x * (max_radius - min_radius)))
 
         # === 5. TẠO THANG MÀU (COLORMAP) CHO PURCHASE VALUE ===
@@ -1531,10 +1532,13 @@ def get_geo_map_data():
 
         # === 6. TẠO BẢN ĐỒ FOLIUM ===
         logger.info("Đang tạo bản đồ Folium...")
-        m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB positron')
+        m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles='CartoDB dark_matter')
+        
+        # Tạo một nhóm gom cụm (MarkerCluster)
+        marker_cluster = MarkerCluster().add_to(m)
 
         for _, row in df.iterrows():
-            # Tạo popup HTML
+            # Tạo popup HTML (giữ nguyên)
             popup_html = f"""
             <div style="font-family: Inter, sans-serif; width: 200px;">
                 <h4 style="font-weight: 600; margin: 0 0 5px 0;">{row['region_name']}</h4>
@@ -1547,16 +1551,17 @@ def get_geo_map_data():
             </div>
             """
             
-            folium.Circle(
+            # [SỬA 3] Dùng CircleMarker thay vì Circle, và bỏ * 100
+            folium.CircleMarker(
                 location=[row['latitude'], row['longitude']],
                 popup=popup_html,
-                radius=row['radius'] * 100, # Bán kính (Folium dùng mét, nên nhân lên)
+                radius=row['radius'], # <-- Đã bỏ * 100 (vì CircleMarker dùng pixel)
                 fill=True,
                 fill_color=colormap(row['purchase_value']), # Màu dựa trên Purchase Value
                 color=colormap(row['purchase_value']), # Viền cùng màu
                 fill_opacity=0.6,
                 weight=1
-            ).add_to(m)
+            ).add_to(marker_cluster) # [SỬA 4] Thêm vào cluster, không phải 'm'
 
         m.add_child(colormap) # Thêm thang màu (legend) vào bản đồ
 
