@@ -58,7 +58,8 @@ class AIAgent:
 
         Sau đó, bạn nên truy vấn schema của các bảng phù hợp nhất.
 
-        Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm. Đừng quên điều này.
+        Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm.
+        Bạn không cần in đậm hay format văn bản gì khi gửi trả lời để tránh hiển thị ***. Đừng quên điều này.
         """.format(
             dialect=self.db.dialect,
             top_k=2,

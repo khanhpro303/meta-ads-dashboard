@@ -2,7 +2,7 @@
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, abort, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -26,6 +26,9 @@ from pywaffle import Waffle
 
 import json
 
+import threading
+import time
+
 # Import các lớp từ database_manager
 from database_manager import (
     DatabaseManager, DimAdAccount, DimCampaign, DimAdset, DimAd, 
@@ -37,6 +40,13 @@ from database_manager import (
 from ai_agent import AIAgent
 
 DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter', 'maximum', 'data_maximum', 'last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_week_mon_sun', 'last_week_sun_sat', 'last_quarter', 'last_year', 'this_week_mon_today', 'this_week_sun_today', 'this_year']
+
+# --- BIẾN TOÀN CỤC ĐỂ KIỂM SOÁT TÁC VỤ CHẠY NGẦM ---
+task_status = {
+    'ads_refreshing': False,
+    'fanpage_refreshing': False
+}
+
 # --- CẤU HÌNH CƠ BẢN ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -282,39 +292,83 @@ def index():
 @login_required
 def refresh_data():
     """
-    Kích hoạt quy trình làm mới dữ liệu (ETL) từ Meta Ads API vào database.
+    [ASYNC] Kích hoạt quy trình làm mới dữ liệu Ads chạy ngầm.
+    [ĐÃ SỬA] Thực hiện refresh theo từng ngày (daily loop) để tránh timeout.
     """
+    # 1. Kiểm tra xem có đang chạy không
+    if task_status['ads_refreshing']:
+        return jsonify({'message': 'Hệ thống đang cập nhật dữ liệu Ads. Vui lòng đợi...'}), 429
+
     try:
         data = request.get_json()
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
 
-        # Xác định ngày bắt đầu và kết thúc
+        # Logic xác định ngày 
         start_date, end_date = None, None
         if date_preset and date_preset in DATE_PRESET:
-            logger.info(f"Yêu cầu tải lại dữ liệu theo date_preset: {date_preset}")
             today = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date()
             start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
         elif start_date_input and end_date_input:
-            logger.info(f"Yêu cầu tải lại dữ liệu theo khoảng thời gian: {start_date_input} - {end_date_input}")
             start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
             end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
         else:
-            # Mặc định an toàn nếu không có gì được gửi
             end_date = datetime.today().date()
             start_date = end_date.replace(day=1)
 
-        db_manager.refresh_data(
-            start_date=start_date.strftime('%Y-%m-%d'), 
-            end_date=end_date.strftime('%Y-%m-%d'), 
-            date_preset=date_preset
-        )
+        # 2. Hàm chạy ngầm (Worker)
+        def run_async_job(app_context, s_date_str, e_date_str, preset):
+            import time # Import time ở đây để dùng trong thread
+            from datetime import datetime, timedelta
+            
+            start_date_worker = datetime.strptime(s_date_str, '%Y-%m-%d').date()
+            end_date_worker = datetime.strptime(e_date_str, '%Y-%m-%d').date()
+            current_date_worker = start_date_worker
+            
+            with app_context: 
+                logger.info(">>> BẮT ĐẦU THREAD REFRESH ADS (DAILY LOOP) <<<")
+                task_status['ads_refreshing'] = True
+                
+                while current_date_worker <= end_date_worker:
+                    current_date_str = current_date_worker.strftime('%Y-%m-%d')
+                    
+                    # [FIX] Tăng ngày cuối thêm 1 ngày để API chấp nhận (D to D+1)
+                    until_date_obj = current_date_worker + timedelta(days=1)
+                    until_date_str = until_date_obj.strftime('%Y-%m-%d') 
+                    
+                    logger.info(f"THREAD ADS: Đang nạp dữ liệu cho ngày: {current_date_str} (API range: {current_date_str} -> {until_date_str})")
+
+                    try:
+                        db_manager.refresh_data(
+                            start_date=current_date_str, 
+                            end_date=until_date_str, # <--- SỬA: Pass D + 1
+                            date_preset=preset
+                        )
+                    except Exception as e:
+                        logger.error(f"THREAD ADS: LỖI khi nạp ngày {current_date_str}: {e}")
+                        # Log lỗi và tiếp tục ngày tiếp theo
+                    
+                    current_date_worker += timedelta(days=1)
+                    time.sleep(1) # Throttling nhẹ 1 giây
+
+                logger.info(">>> KẾT THÚC THREAD REFRESH ADS: HOÀN THÀNH LOOP <<<")
+                task_status['ads_refreshing'] = False
+
+        # 3. Khởi tạo Thread
+        thread = threading.Thread(target=run_async_job, args=(
+            app.app_context(),
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            date_preset
+        ))
+        thread.start()
         
-        return jsonify({'message': 'Dữ liệu đã được làm mới thành công.'})
+        # 4. Trả về ngay lập tức
+        return jsonify({'message': 'Đã tiếp nhận yêu cầu! Dữ liệu đang được cập nhật ngầm (theo từng ngày).'})
     
     except Exception as e:
-        logger.error(f"Lỗi khi làm mới dữ liệu: {e}", exc_info=True)
+        logger.error(f"Lỗi khi kích hoạt refresh: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/accounts', methods=['GET'])
@@ -1169,39 +1223,80 @@ def handle_chat():
 @login_required
 def refresh_data_fanpage():
     """
-    Kích hoạt quy trình làm mới dữ liệu (ETL) cho FANPAGE vào database.
+    [ASYNC] Kích hoạt quy trình làm mới dữ liệu FANPAGE chạy ngầm.
+    [ĐÃ SỬA] Thực hiện refresh theo từng ngày (daily loop) để tránh timeout.
     """
+    # 1. Kiểm tra cờ
+    if task_status['fanpage_refreshing']:
+        return jsonify({'message': 'Hệ thống đang cập nhật Fanpage. Vui lòng đợi...'}), 429
+
     try:
         data = request.get_json()
         start_date_input = data.get('start_date')
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
 
-        # Xác định ngày bắt đầu và kết thúc
+        # Logic xác định ngày (giữ nguyên)
         start_date, end_date = None, None
         if date_preset and date_preset in DATE_PRESET:
-            logger.info(f"Yêu cầu tải lại dữ liệu theo date_preset: {date_preset}")
             today = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date()
             start_date, end_date = _calculate_date_range(date_preset=date_preset, today=today)
         elif start_date_input and end_date_input:
-            logger.info(f"Yêu cầu tải lại dữ liệu theo khoảng thời gian: {start_date_input} - {end_date_input}")
             start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
             end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
         else:
-            # Mặc định an toàn nếu không có gì được gửi
             end_date = datetime.today().date()
             start_date = end_date.replace(day=1)
         
-        # Hàm refresh_data_fanpage CHỈ chấp nhận start_date và end_date
-        db_manager.refresh_data_fanpage(
-            start_date=start_date.strftime('%Y-%m-%d'), 
-            end_date=end_date.strftime('%Y-%m-%d')
-        )
+        # 2. Hàm chạy ngầm (Worker)
+        def run_async_job(app_context, s_date_str, e_date_str):
+            import time # Import time here for use in the thread
+            from datetime import datetime, timedelta
+            
+            start_date_worker = datetime.strptime(s_date_str, '%Y-%m-%d').date()
+            end_date_worker = datetime.strptime(e_date_str, '%Y-%m-%d').date()
+            current_date_worker = start_date_worker
+
+            with app_context:
+                logger.info(">>> BẮT ĐẦU THREAD REFRESH FANPAGE (DAILY LOOP) <<<")
+                task_status['fanpage_refreshing'] = True
+                
+                while current_date_worker <= end_date_worker:
+                    current_date_str = current_date_worker.strftime('%Y-%m-%d')
+                    
+                    # [FIX] Tăng ngày cuối thêm 1 ngày để API chấp nhận (D to D+1)
+                    until_date_obj = current_date_worker + timedelta(days=1)
+                    until_date_str = until_date_obj.strftime('%Y-%m-%d') # D + 1
+                    
+                    logger.info(f"THREAD FANPAGE: Đang nạp dữ liệu cho ngày: {current_date_str} (API range: {current_date_str} -> {until_date_str})")
+
+                    try:
+                        db_manager.refresh_data_fanpage(
+                            start_date=current_date_str, 
+                            end_date=until_date_str # <--- SỬA: Pass D + 1
+                        )
+                    except Exception as e:
+                        logger.error(f"THREAD FANPAGE: LỖI khi nạp ngày {current_date_str}: {e}")
+                        # Log lỗi và tiếp tục ngày tiếp theo
+                    
+                    current_date_worker += timedelta(days=1)
+                    time.sleep(1) # Throttling nhẹ 1 giây
+
+                logger.info(">>> KẾT THÚC THREAD REFRESH FANPAGE: HOÀN THÀNH LOOP <<<")
+                task_status['fanpage_refreshing'] = False
+
+        # 3. Khởi tạo Thread
+        thread = threading.Thread(target=run_async_job, args=(
+            app.app_context(),
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
+        ))
+        thread.start()
         
-        return jsonify({'message': 'Dữ liệu FANPAGE đã được làm mới thành công.'})
+        return jsonify({'message': 'Đã tiếp nhận yêu cầu! Dữ liệu Fanpage đang được cập nhật ngầm (theo từng ngày).'})
     
     except Exception as e:
-        logger.error(f"Lỗi khi làm mới dữ liệu FANPAGE: {e}", exc_info=True)
+        logger.error(f"Lỗi khi kích hoạt refresh Fanpage: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 # ======================================================================
