@@ -44,7 +44,9 @@ DATE_PRESET = ['today', 'yesterday', 'this_month', 'last_month', 'this_quarter',
 # --- BIẾN TOÀN CỤC ĐỂ KIỂM SOÁT TÁC VỤ CHẠY NGẦM ---
 task_status = {
     'ads_refreshing': False,
-    'fanpage_refreshing': False
+    'fanpage_refreshing': False,
+    'ads_start_time': None,
+    'fanpage_start_time': None
 }
 
 # --- CẤU HÌNH CƠ BẢN ---
@@ -288,6 +290,33 @@ def index():
     # Truyền users vào template
     return render_template('index.html', user=current_user, users=users_list)
 
+@app.route('/api/status/<task_type>', methods=['GET'])
+@login_required
+def get_task_status(task_type):
+    """
+    Trả về trạng thái của một tác vụ ngầm (ads hoặc fanpage).
+    """
+    if task_type == 'ads':
+        is_refreshing = task_status['ads_refreshing']
+        start_time = task_status['ads_start_time']
+        status_key = 'ads_refreshing'
+    elif task_type == 'fanpage':
+        is_refreshing = task_status['fanpage_refreshing']
+        start_time = task_status['fanpage_start_time']
+        status_key = 'fanpage_refreshing'
+    else:
+        return jsonify({'error': 'Loại tác vụ không hợp lệ.'}), 400
+
+    elapsed_time = 0
+    if is_refreshing and start_time:
+        elapsed_time = int(time.time() - start_time)
+
+    return jsonify({
+        'status': status_key if is_refreshing else 'finished',
+        'elapsed_time': f"{elapsed_time:02d}", # Định dạng 2 chữ số (ví dụ: 05, 12)
+        'is_refreshing': is_refreshing
+    })
+
 @app.route('/api/refresh', methods=['POST'])
 @login_required
 def refresh_data():
@@ -329,6 +358,7 @@ def refresh_data():
             with app_context: 
                 logger.info(">>> BẮT ĐẦU THREAD REFRESH ADS (DAILY LOOP) <<<")
                 task_status['ads_refreshing'] = True
+                task_status['ads_start_time'] = time.time()
                 
                 while current_date_worker <= end_date_worker:
                     current_date_str = current_date_worker.strftime('%Y-%m-%d')
@@ -354,6 +384,7 @@ def refresh_data():
 
                 logger.info(">>> KẾT THÚC THREAD REFRESH ADS: HOÀN THÀNH LOOP <<<")
                 task_status['ads_refreshing'] = False
+                task_status['ads_start_time'] = None
 
         # 3. Khởi tạo Thread
         thread = threading.Thread(target=run_async_job, args=(
@@ -1260,6 +1291,7 @@ def refresh_data_fanpage():
             with app_context:
                 logger.info(">>> BẮT ĐẦU THREAD REFRESH FANPAGE (DAILY LOOP) <<<")
                 task_status['fanpage_refreshing'] = True
+                task_status['fanpage_start_time'] = time.time()
                 
                 while current_date_worker <= end_date_worker:
                     current_date_str = current_date_worker.strftime('%Y-%m-%d')
@@ -1284,6 +1316,7 @@ def refresh_data_fanpage():
 
                 logger.info(">>> KẾT THÚC THREAD REFRESH FANPAGE: HOÀN THÀNH LOOP <<<")
                 task_status['fanpage_refreshing'] = False
+                task_status['fanpage_start_time'] = None
 
         # 3. Khởi tạo Thread
         thread = threading.Thread(target=run_async_job, args=(

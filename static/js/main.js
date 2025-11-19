@@ -657,15 +657,12 @@ async function handleRefreshData() {
             throw new Error(errorData.error || 'Lỗi khi làm mới dữ liệu từ server.');
         }
         const result = await response.json();
-        showNotification(result.message || 'Làm mới dữ liệu thành công!', 'success');
-        triggerCampaignLoad();
-        handleApplyFilters(); 
+        showNotification(result.message || 'Đã tiếp nhận yêu cầu làm mới dữ liệu Ads!', 'success');
+        startAdsRefreshStatusCheck(button, originalText); 
     } catch (error) {
         console.error('Lỗi khi tải dữ liệu:', error);
         // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
         showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
-    } finally {
-        setButtonIdle(button, originalText);
     }
 }
 
@@ -1325,18 +1322,74 @@ async function handleFanpageRefreshData() {
         }
 
         const result = await response.json();
-        showNotification(result.message || 'Làm mới dữ liệu Fanpage thành công!', 'success');
+        showNotification(result.message || 'Đã tiếp nhận yêu cầu làm mới Fanpage!', 'success');
         
-        // Sau khi làm mới, tự động nhấn "Áp dụng" để tải lại dữ liệu
-        handleFanpageApplyFilters(); 
+        startFanpageRefreshStatusCheck(button, originalText); 
 
     } catch (error) {
         console.error('Lỗi khi tải dữ liệu Fanpage:', error);
         // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
         showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
-    } finally {
-        setButtonIdle(button, originalText);
     }
+}
+
+/**
+ * [MỚI] Kiểm tra trạng thái làm mới dữ liệu Ads (Panel Tổng quan)
+ */
+function startAdsRefreshStatusCheck(button, originalText) {
+    const checkStatus = async () => {
+        try {
+            const response = await fetch('/api/status/ads');
+            const statusData = await response.json();
+
+            if (statusData.status === 'ads_refreshing') {
+                // Vẫn đang chạy, đặt trạng thái loading và lặp lại sau 3 giây
+                button.querySelector('span').innerText = `Đang cập nhật (${statusData.elapsed_time}s)...`;
+                setTimeout(checkStatus, 3000);
+            } else {
+                // Đã xong hoặc lỗi
+                showNotification('Cập nhật dữ liệu Ads HOÀN TẤT.', 'success');
+                setButtonIdle(button, originalText);
+                triggerCampaignLoad(); // Tải lại dropdowns
+                handleApplyFilters(); // Tải lại dashboard
+            }
+        } catch (error) {
+            console.error('Lỗi kiểm tra trạng thái Ads:', error);
+            showNotification('Lỗi server khi kiểm tra trạng thái Ads.', 'error');
+            setButtonIdle(button, originalText);
+        }
+    };
+    // Khởi động lần đầu
+    setTimeout(checkStatus, 100); 
+}
+
+/**
+ * [MỚI] Kiểm tra trạng thái làm mới dữ liệu Fanpage (Panel Fanpage)
+ */
+function startFanpageRefreshStatusCheck(button, originalText) {
+    const checkStatus = async () => {
+        try {
+            const response = await fetch('/api/status/fanpage');
+            const statusData = await response.json();
+
+            if (statusData.status === 'fanpage_refreshing') {
+                // Vẫn đang chạy
+                button.querySelector('span').innerText = `Đang cập nhật (${statusData.elapsed_time}s)...`;
+                setTimeout(checkStatus, 3000);
+            } else {
+                // Đã xong hoặc lỗi
+                showNotification('Cập nhật dữ liệu Fanpage HOÀN TẤT.', 'success');
+                setButtonIdle(button, originalText);
+                handleFanpageApplyFilters(); // Tải lại dashboard
+            }
+        } catch (error) {
+            console.error('Lỗi kiểm tra trạng thái Fanpage:', error);
+            showNotification('Lỗi server khi kiểm tra trạng thái Fanpage.', 'error');
+            setButtonIdle(button, originalText);
+        }
+    };
+    // Khởi động lần đầu
+    setTimeout(checkStatus, 100); 
 }
 
 /**
