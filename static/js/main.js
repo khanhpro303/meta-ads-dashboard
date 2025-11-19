@@ -663,6 +663,12 @@ async function handleRefreshData() {
         console.error('Lỗi khi tải dữ liệu:', error);
         // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
         showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
+    } finally {
+        // Đặt nút về trạng thái bình thường nếu có lỗi (trước khi API được gọi)
+        // hoặc nếu API không thành công (mà không có status check)
+        if (!task_status['ads_refreshing']) { // Chỉ set idle nếu không đang chạy ngầm
+             setButtonIdle(button, originalText);
+        }
     }
 }
 
