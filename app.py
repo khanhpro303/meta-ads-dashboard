@@ -4,7 +4,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 
-from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, abort
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, abort, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -23,6 +23,8 @@ import matplotlib
 matplotlib.use('Agg') # Chuyển backend sang 'Agg' để chạy trên server
 import matplotlib.pyplot as plt
 from pywaffle import Waffle
+
+import json
 
 # Import các lớp từ database_manager
 from database_manager import (
@@ -1140,16 +1142,28 @@ def handle_chat():
     if not user_message:
         return jsonify({'error': 'Không có tin nhắn nào được gửi.'}), 400
 
-    try:
-        # Gửi câu hỏi cho AI Agent
-        ai_response = ai_analyst.ask(user_message)
-        
-        # Trả lời về cho front-end
-        return jsonify({'response': ai_response})
-    
-    except Exception as e:
-        logger.error(f"Lỗi tại endpoint /api/chat: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+    def generate_stream():
+        """Generator để stream dữ liệu từ AI Agent về client"""
+        try:
+            for chunk in ai_analyst.ask(user_message):
+                # Gói mỗi chunk thành một thông điệp Server-Sent Event (SSE)
+                # Dùng format SSE: data: <JSON payload>\n\n
+                # Nếu bạn muốn stream text đơn giản: yield chunk
+                # Nếu muốn gửi JSON:
+                payload = {'text': chunk}
+                yield f"data: {json.dumps(payload)}\n\n"
+            
+            # Thông điệp kết thúc (tùy chọn nhưng nên có)
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            logger.error(f"Lỗi trong quá trình streaming: {e}", exc_info=True)
+            # Gửi thông báo lỗi về client
+            yield f"data: {json.dumps({'error': 'Lỗi server trong quá trình xử lý AI.'})}\n\n"
+
+    # Trả về Response sử dụng generator và Content-Type là text/event-stream (SSE)
+    # Đây là điểm mấu chốt để Heroku không timeout
+    return Response(generate_stream(), mimetype='text/event-stream')
     
 @app.route('/api/refresh_fanpage', methods=['POST'])
 @login_required

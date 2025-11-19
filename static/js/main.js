@@ -109,26 +109,97 @@ document.addEventListener('DOMContentLoaded', () => {
             if (messageText === "") return;
             addMessage(messageText, "user");
             input.value = ""; 
-            addMessage(null, "loading");
+            
+            // Thêm indicator loading trước khi gọi API
+            const loadingIndicatorWrapper = addMessage(null, "loading");
+            let botMessageDiv = null; // Biến để giữ tham chiếu đến div tin nhắn của bot
+
             try {
+                // [THAY ĐỔI LỚN] Sử dụng Fetch API với Response Streaming
                 const response = await fetch("/api/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ message: messageText }),
                 });
-                removeLoadingIndicator();
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Lỗi server: ${response.statusText}`);
+
+                // Kiểm tra HTTP Status
+                if (!response.ok || !response.body) {
+                    const errorText = await response.text();
+                    throw new Error(`Lỗi server (${response.status}): ${errorText.substring(0, 100)}...`);
                 }
-                const data = await response.json();
-                addMessage(data.response, "bot");
+                
+                // Khởi tạo div tin nhắn bot
+                removeLoadingIndicator(); 
+                const messageWrapper = addMessage("", "bot");
+                botMessageDiv = messageWrapper.querySelector('div');
+                botMessageDiv.textContent = ""; // Xóa nội dung mặc định
+
+                // Khởi tạo Reader và Decoder cho luồng dữ liệu
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+
+                // Bắt đầu đọc luồng
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    // Xử lý luồng SSE (Server-Sent Events)
+                    // Vì chúng ta đang dùng format SSE: data: <JSON payload>\n\n
+                    let boundary = buffer.indexOf('\n\n');
+                    while (boundary !== -1) {
+                        const chunk = buffer.substring(0, boundary).trim();
+                        buffer = buffer.substring(boundary + 2);
+
+                        if (chunk.startsWith("data:")) {
+                            let jsonString = chunk.substring(5).trim();
+                            
+                            // [DONE] là tín hiệu kết thúc
+                            if (jsonString === '[DONE]') {
+                                break;
+                            }
+                            
+                            try {
+                                const payload = JSON.parse(jsonString);
+                                
+                                // Nếu có lỗi (được gửi trong luồng)
+                                if (payload.error) {
+                                    throw new Error(payload.error);
+                                }
+                                
+                                // Gắn phần text chunk vào nội dung
+                                if (payload.text) {
+                                    botMessageDiv.textContent += payload.text;
+                                    chatBody.scrollTop = chatBody.scrollHeight; // Cuộn xuống
+                                }
+                                
+                            } catch (e) {
+                                console.error("Lỗi parse JSON trong stream:", e);
+                                // Gán lỗi và kết thúc
+                                botMessageDiv.textContent += `\n\n[LỖI PHÂN TÍCH]`;
+                                break; 
+                            }
+                        }
+
+                        boundary = buffer.indexOf('\n\n');
+                    }
+                    if (buffer.includes('[DONE]')) break; // Thoát vòng lặp nếu DONE
+                }
+                
+                // Xử lý các xuống dòng HTML sau khi stream xong
+                if (botMessageDiv) {
+                    botMessageDiv.innerHTML = botMessageDiv.textContent.replace(/\n/g, '<br>');
+                }
+
             } catch (error) {
                 console.error("Lỗi khi chat:", error);
                 removeLoadingIndicator();
                 addMessage(`Xin lỗi, đã xảy ra lỗi: ${error.message}`, "bot");
             }
         }
+
         sendBtn.addEventListener("click", sendMessageToServer);
         input.addEventListener("keypress", function(e) {
             if (e.key === "Enter") {

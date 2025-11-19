@@ -13,7 +13,7 @@ load_dotenv()
 class AIAgent:
     def __init__(self):
         # Initialize model
-        self.model = init_chat_model("google_genai:gemini-2.5-flash")
+        self.model = init_chat_model("google_genai:gemini-2.5-pro")
 
         # Connect to Postgres
         self.db_url = os.getenv('DATABASE_URL')
@@ -73,16 +73,28 @@ class AIAgent:
     
     def ask(self, query: str):
         """
-        Hàm nhận câu hỏi và trả lời
+        Hàm nhận câu hỏi và trả về từng phần (chunk) của câu trả lời.
+        Nó hoạt động như một Generator.
         """
-        final_message = None
         for step in self.agent.stream(
             {"messages": [{"role": "user", "content": query}]},
-            stream_mode="values",
+            stream_mode="values", # Đảm bảo đang streaming giá trị (value)
         ):
-            step["messages"][-1].pretty_print()
-            final_message = step["messages"][-1]
-        return final_message.content[0].get("text")
+            
+            # [QUAN TRỌNG]: Trong trường hợp của LangChain Agent, sẽ nhận được
+            # cả Tool Calls và Final Answer. Lọc và chỉ yield phần text
+            # của Final Answer.
+            
+            # Chỉ yield phần text có sẵn:
+            if step["messages"][-1].content:
+                # Lọc để chỉ lấy nội dung văn bản cuối cùng (nếu có)
+                text_content = step["messages"][-1].content[0].get("text")
+                if text_content:
+                    yield text_content
+                    
+            # [CÁCH CHÍNH XÁC] Yêu cầu agent.stream trả về từng token (nếu LLM stream token)
+            # hoặc sử dụng agent.astream_events() để kiểm soát chi tiết hơn.
+            # Nhưng đối với hiện tại, chúng ta tạm giữ cách này và chuyển sang Flask.
 
 def main():
     try:
