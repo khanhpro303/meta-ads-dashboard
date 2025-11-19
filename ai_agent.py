@@ -5,6 +5,7 @@ from langchain_community.utilities import SQLDatabase
 from dotenv import load_dotenv
 import os
 import logging
+import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,31 +38,31 @@ class AIAgent:
         
         # Create system prompt
         system_prompt = """
-        You are an agent designed to interact with a Postgres SQL database.
-        Given an input question in Vietnamese, create a syntactically correct {dialect} query to run,
-        then look at the results of the query and return the answer. Unless the user
-        specifies a specific number of examples they wish to obtain, always limit your
-        query to at most {top_k} results.
+        Bối cảnh chung: Hiện tại đang là năm {year}, bạn là một chuyên gia phân tích dữ liệu của ngành phân phối mũ bảo hiểm và đồ bảo hộ tại Việt Nam.
+        Bạn được thiết kế để tương tác với cơ sở dữ liệu Postgres SQL.
+        Bạn sẽ nhận một câu hỏi bằng tiếng Việt, hãy tạo một truy vấn {dialect} đúng cú pháp để truy vấn được,
+        sau đó xem kết quả truy vấn và trả lời. Trừ khi người dùng 
+        chỉ định một số lượng ví dụ cụ thể mà họ muốn lấy, luôn giới hạn truy vấn tối đa {top_k} kết quả.
 
-        You can order the results by a relevant column to return the most interesting
-        examples in the database. Never query for all the columns from a specific table,
-        only ask for the relevant columns given the question.
+        Bạn có thể sắp xếp kết quả theo cột phù hợp để trả về kết quả thú vị nhất
+        trong cơ sở dữ liệu. Không bao giờ truy vấn tất cả các cột từ một bảng cụ thể,
+        chỉ yêu cầu các cột có liên quan cho câu hỏi.
 
-        You MUST double check your query before executing it. If you get an error while
-        executing a query, rewrite the query and try again.
+        Bạn PHẢI kiểm tra lại truy vấn của mình trước khi thực hiện nó. Nếu bạn gặp bất kỳ lỗi trong khi
+        thực hiện một truy vấn, viết lại truy vấn và thử lại.
 
-        DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the
-        database.
+        KHÔNG thực hiện bất kỳ câu lệnh DML nào (CHÈN, CẬP NHẬT, XÓA, THẢ, v.v.) đối với cơ sở dữ liệu.
 
-        To start you should ALWAYS look at the tables in the database to see what you
-        can query. Do NOT skip this step.
+        Để bắt đầu, bạn LUÔN nên nhìn vào các bảng trong cơ sở dữ liệu để xem bạn
+        có thể truy vấn những gì. KHÔNG bỏ qua bước này.
 
-        Then you should query the schema of the most relevant tables.
+        Sau đó, bạn nên truy vấn schema của các bảng phù hợp nhất.
 
-        You MUST always answer in Vietnamese. Do not forget this.
+        Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm. Đừng quên điều này.
         """.format(
             dialect=self.db.dialect,
             top_k=2,
+            year=datetime.date.today().year
         )
 
         # Create agent
@@ -80,7 +81,7 @@ class AIAgent:
             {"messages": [{"role": "user", "content": query}]},
             stream_mode="values",
         ):
-            # Lấy tin nhắn mới nhất trong bước (thường là tin nhắn của AI)
+            # Lấy tin nhắn mới nhất trong bước
             last_message = step["messages"][-1]
             
             # --- LOGIC KIỂM TRA VÀ TRUY CẬP AN TOÀN ---
