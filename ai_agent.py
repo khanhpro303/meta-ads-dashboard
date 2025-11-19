@@ -74,27 +74,37 @@ class AIAgent:
     def ask(self, query: str):
         """
         Hàm nhận câu hỏi và trả về từng phần (chunk) của câu trả lời.
-        Nó hoạt động như một Generator.
+        Nó hoạt động như một Generator, chỉ yield phần text có sẵn.
         """
         for step in self.agent.stream(
             {"messages": [{"role": "user", "content": query}]},
-            stream_mode="values", # Đảm bảo đang streaming giá trị (value)
+            stream_mode="values",
         ):
+            # Lấy tin nhắn mới nhất trong bước (thường là tin nhắn của AI)
+            last_message = step["messages"][-1]
             
-            # [QUAN TRỌNG]: Trong trường hợp của LangChain Agent, sẽ nhận được
-            # cả Tool Calls và Final Answer. Lọc và chỉ yield phần text
-            # của Final Answer.
+            # --- LOGIC KIỂM TRA VÀ TRUY CẬP AN TOÀN ---
             
-            # Chỉ yield phần text có sẵn:
-            if step["messages"][-1].content:
-                # Lọc để chỉ lấy nội dung văn bản cuối cùng (nếu có)
-                text_content = step["messages"][-1].content[0].get("text")
-                if text_content:
-                    yield text_content
-                    
-            # [CÁCH CHÍNH XÁC] Yêu cầu agent.stream trả về từng token (nếu LLM stream token)
-            # hoặc sử dụng agent.astream_events() để kiểm soát chi tiết hơn.
-            # Nhưng đối với hiện tại, chúng ta tạm giữ cách này và chuyển sang Flask.
+            # 1. Kiểm tra thuộc tính 'content' có tồn tại không
+            if not hasattr(last_message, 'content'):
+                continue
+                
+            content = last_message.content
+            
+            # 2. Kiểm tra nếu 'content' là một LIST (cấu trúc phức tạp, ví dụ: Final Answer)
+            if isinstance(content, list) and content and content[0].get("text"):
+                # Lấy nội dung văn bản từ MessagePart đầu tiên
+                text_content = content[0].get("text")
+                yield text_content
+                
+            # 3. Kiểm tra nếu 'content' là một STRING (cấu trúc đơn giản, ví dụ: Tool Call)
+            # Bỏ qua các bước là Tool Call hoặc Tool Message
+            # Vì chúng ta chỉ muốn hiển thị câu trả lời cuối cùng của AI.
+            elif isinstance(content, str):
+                # Bạn có thể chọn yield nội dung string nếu nó là tin nhắn quan trọng
+                # NHƯNG: Đối với Chatbot, chúng ta chỉ muốn hiển thị FINAL ANSWER, 
+                # nên tốt nhất là bỏ qua các bước trung gian (như SQL Query, Tool Output).
+                pass
 
 def main():
     try:
