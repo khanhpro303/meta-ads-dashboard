@@ -1488,6 +1488,7 @@ def get_fanpage_cover():
     """
     Lấy URL ảnh bìa (cover source) cho một page_id cụ thể.
     Tự động refresh Page Token nếu gặp lỗi 190 (Token hết hạn).
+    Thêm HARDCODE FALLBACK nếu API gọi thất bại.
     """
     session = db_manager.SessionLocal()
     
@@ -1495,6 +1496,16 @@ def get_fanpage_cover():
     page_id = request.args.get('page_id')
     if not page_id:
         return jsonify({'error': 'Thiếu "page_id" query parameter.'}), 400
+
+    # Dữ liệu Hardcode Fallback
+    HARDCODE_COVER_URLS = {
+        '111944661954575': 'https://scontent.fsgn5-5.fna.fbcdn.net/v/t39.30808-6/505516494_583776994773008_5751680288542296759_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=6tCXWeyJHYgQ7kNvwErQccX&_nc_oc=AdnXQntJWTjdAen1ObqLPCdAeAwH_wsWl55DSAf2fuIqtLU7oha-k4T9l5DYXOyqEAU&_nc_zt=23&_nc_ht=scontent.fsgn5-5.fna&_nc_gid=U52_TpsbDcVUe_XxDd3U8g&oh=00_AfhSsStnB3keVoE6PhIwqOvNGW8P-Mxqj_JyLcuotyrV_Q&oe=692314C8',
+        '631209596914838': 'https://scontent.fsgn5-14.fna.fbcdn.net/v/t39.30808-6/489343720_9431700406865669_8329975674331979093_n.jpg?_nc_cat=101&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=SZre4u1zw6UQ7kNvwHXZmrj&_nc_oc=Admx3iCR0L_BfHXNT_QLPLwykA3Gz-8vJxmyvtB7TKnOV8winPy_6aKkc7Qxe9XUIOE&_nc_zt=23&_nc_ht=scontent.fsgn5-14.fna&_nc_gid=GqIP4rOvfVrPUvSpB__7Wg&oh=00_Afi1dsdl9iia6ftmGCUyozQg-2u_pC1YiLjyYmWHB53PMQ&oe=692315D5',
+        '248822825627335': 'https://scontent.fsgn5-5.fna.fbcdn.net/v/t39.30808-6/482264656_960073932989098_8337587422617360665_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=CLF6Mq9SASoQ7kNvwEcA0Pe&_nc_oc=AdlB5QLDdDZZV2-LETLy0z5vTymJV8aOL0GluPqcIPgWJu6g5bcDacelNhUqcXhiDyI&_nc_zt=23&_nc_ht=scontent.fsgn5-5.fna&_nc_gid=7plKpVpXt6A3S-JV5k8GSg&oh=00_AfhXdqyMPS3rLNDGRdNUBt-FYK4Iz7puc47ipX6RjoQOig&oe=692317AB',
+        '168476889690455': 'https://scontent.fsgn5-15.fna.fbcdn.net/v/t39.30808-6/470175270_122182206860150372_7286051316219901589_n.png?_nc_cat=111&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=MTPGgNmvztsQ7kNvwHyY9wX&_nc_oc=Adlp9E-Ape_HTbrB0d-vusy2UH0-25ld6Kt5TiBkug6W_aPhsLBFAVEqLk-_orXea04&_nc_zt=23&_nc_ht=scontent.fsgn5-15.fna&_nc_gid=bS0u4ki4aCBxch3RrhLmaQ&oh=00_AfiNodtzjX0rsVSfCKe8g5kUZUs_HSnGAVLqEqsiT86G8Q&oe=69231656',
+        '937224289677041': 'https://scontent.fsgn5-10.fna.fbcdn.net/v/t39.30808-6/556625667_1109944484673971_2093189778156499327_n.jpg?_nc_cat=107&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=LBBQ6xkCsNUQ7kNvwH95XBW&_nc_oc=Adlfa7JYvxZfIQBUaY7Ffhooz8YLwzqfcgldWD4jiIcnQpbrR-NN1dvCpE9xtdS3aZc&_nc_zt=23&_nc_ht=scontent.fsgn5-10.fna&_nc_gid=JBvTD-M6bnZJo_bRvC5A3w&oh=00_AfioPJRK5cv0qjiBrtFv3O5SkrloLDKCcRHlBxMWKrrbrQ&oe=6922FDA7',
+        '273719346452016': 'https://scontent.fsgn5-8.fna.fbcdn.net/v/t39.30808-6/480285908_1992344864589447_6248563699892872706_n.jpg?_nc_cat=109&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=UboqNzMpPfYQ7kNvwGvk0Lz&_nc_oc=AdkRZrVdkVzrIk_g2x67vLGKa0829kkS2XibJY8JvTTrwB-2OiOk3_uGLM5Fb4UeVa0&_nc_zt=23&_nc_ht=scontent.fsgn5-8.fna&_nc_gid=Us3NKjeD2BAgifHv2gpAGQ&oh=00_AfhNM40Dw2xpnTUBEdmxB2vrOk62irooDk8vyYeaOoyp0g&oe=69231788'
+    }
 
     try:
         # 2. Lấy Page Access Token đã lưu trong CSDL
@@ -1504,6 +1515,10 @@ def get_fanpage_cover():
         
         if not page or not page.page_access_token:
             logger.error(f"Không tìm thấy token cho page_id {page_id} trong dim_fanpage.")
+            # Chuyển qua Fallback
+            if page_id in HARDCODE_COVER_URLS:
+                logger.info(f"Sử dụng HARDCODE fallback cho page_id {page_id}")
+                return jsonify({'cover_url': HARDCODE_COVER_URLS[page_id]})
             return jsonify({'error': 'Không tìm thấy Fanpage hoặc Page Access Token trong CSDL.'}), 404
         
         page_access_token = page.page_access_token
@@ -1521,6 +1536,7 @@ def get_fanpage_cover():
             return response.json()
 
         # 4. Thử gọi API lần 1
+        data = None
         try:
             data = call_api(page_access_token)
         
@@ -1555,8 +1571,8 @@ def get_fanpage_cover():
                         
                 if not new_token:
                     logger.error(f"Không tìm thấy token mới cho {page_id} sau khi làm mới.")
-                    raise e # Ném lại lỗi gốc
-                
+                    raise e # Ném lại lỗi gốc để except bên ngoài bắt
+
                 # B4: Thử lại (Lần 2) với token mới
                 logger.info(f"Thử lại API ảnh bìa cho {page_id} với token mới...")
                 data = call_api(new_token) # Nếu thất bại lần 2, nó sẽ ném lỗi ra ngoài
@@ -1569,6 +1585,10 @@ def get_fanpage_cover():
         cover_url = data.get('cover', {}).get('source')
         
         if not cover_url:
+            # Chuyển qua Fallback
+            if page_id in HARDCODE_COVER_URLS:
+                logger.info(f"Sử dụng HARDCODE fallback cho page_id {page_id} (API trả về không có ảnh bìa).")
+                return jsonify({'cover_url': HARDCODE_COVER_URLS[page_id]})
             return jsonify({'error': 'Page này không có ảnh bìa.'}), 404
             
         return jsonify({'cover_url': cover_url})
@@ -1578,6 +1598,12 @@ def get_fanpage_cover():
         # 1. Lần 1 thất bại (với lỗi không phải 190)
         # 2. Lần 2 (retry) cũng thất bại
         logger.error(f"Lỗi API (cuối cùng) khi lấy ảnh bìa cho {page_id}: {e}")
+        
+        # === HARDCODE FALLBACK NẾU THẤT BẠI HOÀN TOÀN SAU KHI THỬ LẠI ===
+        if page_id in HARDCODE_COVER_URLS:
+            logger.info(f"Sử dụng HARDCODE fallback cho page_id {page_id} (sau khi API gọi thất bại).")
+            return jsonify({'cover_url': HARDCODE_COVER_URLS[page_id]})
+            
         if e.response is not None:
             try:
                 logger.error(f"Response: {e.response.json()}")
@@ -1587,6 +1613,11 @@ def get_fanpage_cover():
     
     except Exception as e:
         logger.error(f"Lỗi nội bộ khi lấy ảnh bìa: {e}", exc_info=True)
+        # === HARDCODE FALLBACK NẾU LỖI NỘI BỘ ===
+        if page_id in HARDCODE_COVER_URLS:
+            logger.info(f"Sử dụng HARDCODE fallback cho page_id {page_id} (sau khi lỗi nội bộ).")
+            return jsonify({'cover_url': HARDCODE_COVER_URLS[page_id]})
+            
         return jsonify({'error': 'Lỗi server nội bộ.'}), 500
     finally:
         session.close()

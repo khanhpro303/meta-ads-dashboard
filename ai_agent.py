@@ -73,15 +73,15 @@ class AIAgent:
     
     def ask(self, query: str):
         """
-        Hàm nhận câu hỏi và trả lời
+        Hàm nhận câu hỏi và trả lời, sử dụng agent.invoke() để gọi trực tiếp
+        và chờ kết quả cuối cùng (non-stream) nhằm tối ưu hiệu suất và tránh timeout.
         """
-        final_message = None
-        for step in self.agent.stream(
-            {"messages": [{"role": "user", "content": query}]},
-            stream_mode="values",
-        ):
-            step["messages"][-1].pretty_print()
-            final_message = step["messages"][-1]
+        # Gọi agent trực tiếp và chờ kết quả cuối cùng.
+        # Điều này loại bỏ vòng lặp stream từng bước
+        response = self.agent.invoke(
+            {"messages": [{"role": "user", "content": query}]}
+        )
+        final_message = response['messages'][-1]
         return final_message.content[0].get("text")
 
 def main():
