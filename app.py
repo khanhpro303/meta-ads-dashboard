@@ -76,6 +76,38 @@ except Exception as e:
     logger.error(f"KHÔNG THỂ KHỞI TẠO AI AGENT: {e}")
     ai_analyst = None
 
+# Tên file để lưu trạng thái chung cho tất cả worker
+STATUS_FILE = 'system_status.json'
+
+def save_task_status(status_data):
+    """Lưu trạng thái vào file JSON để chia sẻ giữa các worker"""
+    try:
+        with open(STATUS_FILE, 'w') as f:
+            json.dump(status_data, f)
+    except Exception as e:
+        logger.error(f"Không thể lưu trạng thái: {e}")
+
+def load_task_status():
+    """Đọc trạng thái từ file JSON"""
+    if not os.path.exists(STATUS_FILE):
+        # Trạng thái mặc định nếu file chưa tồn tại
+        return {
+            'ads_refreshing': False,
+            'fanpage_refreshing': False,
+            'ads_start_time': None,
+            'fanpage_start_time': None
+        }
+    try:
+        with open(STATUS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {
+            'ads_refreshing': False,
+            'fanpage_refreshing': False,
+            'ads_start_time': None,
+            'fanpage_start_time': None
+        }
+
 # --- HELPER: TẠO USER ADMIN MẶC ĐỊNH KHI CHẠY LẦN ĐẦU ---
 def create_default_admin():
     session = db_manager.SessionLocal()
@@ -293,17 +325,15 @@ def index():
 @app.route('/api/status/<task_type>', methods=['GET'])
 @login_required
 def get_task_status(task_type):
-    """
-    Trả về trạng thái của một tác vụ ngầm (ads hoặc fanpage).
-    """
+    # [SỬA] Đọc trạng thái từ File thay vì biến toàn cục
+    current_status = load_task_status()
+    
     if task_type == 'ads':
-        is_refreshing = task_status['ads_refreshing']
-        start_time = task_status['ads_start_time']
-        status_key = 'ads_refreshing'
+        is_refreshing = current_status.get('ads_refreshing', False)
+        start_time = current_status.get('ads_start_time')
     elif task_type == 'fanpage':
-        is_refreshing = task_status['fanpage_refreshing']
-        start_time = task_status['fanpage_start_time']
-        status_key = 'fanpage_refreshing'
+        is_refreshing = current_status.get('fanpage_refreshing', False)
+        start_time = current_status.get('fanpage_start_time')
     else:
         return jsonify({'error': 'Loại tác vụ không hợp lệ.'}), 400
 
@@ -312,8 +342,8 @@ def get_task_status(task_type):
         elapsed_time = int(time.time() - start_time)
 
     return jsonify({
-        'status': status_key if is_refreshing else 'finished',
-        'elapsed_time': f"{elapsed_time:02d}", # Định dạng 2 chữ số (ví dụ: 05, 12)
+        'status': f"{task_type}_refreshing" if is_refreshing else 'finished',
+        'elapsed_time': f"{elapsed_time:02d}",
         'is_refreshing': is_refreshing
     })
 
@@ -324,8 +354,9 @@ def refresh_data():
     [ASYNC] Kích hoạt quy trình làm mới dữ liệu Ads chạy ngầm.
     [ĐÃ SỬA] Thực hiện refresh theo từng ngày (daily loop) để tránh timeout.
     """
-    # 1. Kiểm tra xem có đang chạy không
-    if task_status['ads_refreshing']:
+    # 1. Đọc trạng thái từ file
+    current_status = load_task_status()
+    if current_status.get('ads_refreshing'):
         return jsonify({'message': 'Hệ thống đang cập nhật dữ liệu Ads. Vui lòng đợi...'}), 429
 
     try:
@@ -348,7 +379,7 @@ def refresh_data():
 
         # 2. Hàm chạy ngầm (Worker)
         def run_async_job(app_context, s_date_str, e_date_str, preset):
-            import time # Import time ở đây để dùng trong thread
+            import time
             from datetime import datetime, timedelta
             
             start_date_worker = datetime.strptime(s_date_str, '%Y-%m-%d').date()
@@ -356,35 +387,47 @@ def refresh_data():
             current_date_worker = start_date_worker
             
             with app_context: 
-                logger.info(">>> BẮT ĐẦU THREAD REFRESH ADS (DAILY LOOP) <<<")
-                task_status['ads_refreshing'] = True
-                task_status['ads_start_time'] = time.time()
+                logger.info(">>> BẮT ĐẦU THREAD REFRESH ADS <<<")
                 
-                while current_date_worker <= end_date_worker:
-                    current_date_str = current_date_worker.strftime('%Y-%m-%d')
-                    
-                    # [FIX] Tăng ngày cuối thêm 1 ngày để API chấp nhận (D to D+1)
-                    until_date_obj = current_date_worker + timedelta(days=1)
-                    until_date_str = until_date_obj.strftime('%Y-%m-%d') 
-                    
-                    logger.info(f"THREAD ADS: Đang nạp dữ liệu cho ngày: {current_date_str} (API range: {current_date_str} -> {until_date_str})")
+                # [SỬA] Cập nhật trạng thái vào FILE -> True
+                status_update = load_task_status()
+                status_update['ads_refreshing'] = True
+                status_update['ads_start_time'] = time.time()
+                save_task_status(status_update)
+                
+                try:
+                    while current_date_worker <= end_date_worker:
+                        current_date_str = current_date_worker.strftime('%Y-%m-%d')
+                        
+                        # D to D+1 logic (Giữ nguyên)
+                        until_date_obj = current_date_worker + timedelta(days=1)
+                        until_date_str = until_date_obj.strftime('%Y-%m-%d') 
+                        
+                        logger.info(f"THREAD ADS: Đang nạp {current_date_str}")
 
-                    try:
-                        db_manager.refresh_data(
-                            start_date=current_date_str, 
-                            end_date=until_date_str, # <--- SỬA: Pass D + 1
-                            date_preset=preset
-                        )
-                    except Exception as e:
-                        logger.error(f"THREAD ADS: LỖI khi nạp ngày {current_date_str}: {e}")
-                        # Log lỗi và tiếp tục ngày tiếp theo
-                    
-                    current_date_worker += timedelta(days=1)
-                    time.sleep(1) # Throttling nhẹ 1 giây
+                        try:
+                            db_manager.refresh_data(
+                                start_date=current_date_str, 
+                                end_date=until_date_str,
+                                date_preset=preset
+                            )
+                        except Exception as e:
+                            logger.error(f"Lỗi nạp ngày {current_date_str}: {e}")
+                        
+                        current_date_worker += timedelta(days=1)
+                        time.sleep(1) 
 
-                logger.info(">>> KẾT THÚC THREAD REFRESH ADS: HOÀN THÀNH LOOP <<<")
-                task_status['ads_refreshing'] = False
-                task_status['ads_start_time'] = None
+                finally:
+                    # [QUAN TRỌNG] Luôn cập nhật trạng thái về False dù có lỗi hay không
+                    logger.info(">>> KẾT THÚC THREAD REFRESH ADS <<<")
+                    # Thêm delay nhỏ để frontend kịp nhận trạng thái cuối cùng nếu cần
+                    time.sleep(2) 
+                    
+                    # [SỬA] Cập nhật trạng thái vào FILE -> False
+                    final_status = load_task_status()
+                    final_status['ads_refreshing'] = False
+                    final_status['ads_start_time'] = None
+                    save_task_status(final_status)
 
         # 3. Khởi tạo Thread
         thread = threading.Thread(target=run_async_job, args=(
