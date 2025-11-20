@@ -557,6 +557,13 @@ class FacebookAdsExtractor:
         Lấy tất cả dữ liệu insights theo từ cấp độ quảng cáo cho theo vị trí quảng cáo
         """
         all_insights = []
+        filtering_structure = [
+            {
+                'field': 'ad.effective_status',
+                'operator': 'IN',
+                'value': ['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED']
+            }
+        ]
         url = f"{self.base_url}/{account_id}/insights"
 
         params = {
@@ -566,6 +573,7 @@ class FacebookAdsExtractor:
             'fields': 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,ctr,cpc,cpm,reach,frequency,actions,action_values',
             'time_increment': 1,  # Lấy dữ liệu nhóm theo hàng ngày
             'breakdowns': 'publisher_platform,platform_position',
+            'filtering': json.dumps(filtering_structure),
         }
 
         # Chỉ sử dụng date_preset nếu không có time_range.
