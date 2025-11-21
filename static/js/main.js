@@ -1284,13 +1284,18 @@ function getFanpageDateFilterParams(forRefresh = false) {
 }
 
 /**
- * [MỚI] Xử lý sự kiện khi nhấn nút "Làm mới" trên panel Fanpage
+ * [SỬA] Xử lý sự kiện khi nhấn nút "Làm mới" trên panel Fanpage
  */
 async function handleFanpageRefreshData() {
     if (!elFpFilterDate || !elFpBtnRefresh) return;
 
     const button = elFpBtnRefresh;
-    const originalText = button.querySelector('span').innerText;
+    // Lưu text gốc (ví dụ: "Làm mới dữ liệu")
+    const originalText = button.getAttribute('data-original-text') || button.querySelector('span').innerText;
+    if (!button.getAttribute('data-original-text')) {
+        button.setAttribute('data-original-text', originalText);
+    }
+
     setButtonLoading(button, 'Đang tải...');
 
     try {
@@ -1298,24 +1303,18 @@ async function handleFanpageRefreshData() {
         const dateParams = getFanpageDateFilterParams(true);
         if (dateParams === null) throw new Error("Ngày không hợp lệ.");
         
-        // --- [BỔ SUNG LOGIC VALIDATION] ---
+        // Validation logic (giống cũ)
         if (dateParams.date_preset) {
-            // 1. Chặn nếu người dùng chọn preset
-            throw new Error("Làm mới: Vui lòng sử dụng 'Tùy chỉnh' và chọn 1 ngày.");
-
+            throw new Error("Làm mới: Vui lòng sử dụng 'Tùy chỉnh' và chọn tối đa 2 ngày.");
         } else if (dateParams.start_date && dateParams.end_date) { 
-            // 2. Kiểm tra 'Tùy chỉnh' (giữ nguyên logic cũ)
             const startDate = new Date(dateParams.start_date);
             const endDate = new Date(dateParams.end_date);
-            const diffTime = Math.abs(endDate - startDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-            if (diffDays >= 2) {
-                // Nếu >= 3 ngày, báo lỗi và dừng lại
-                throw new Error("Tùy chỉnh: Chỉ được làm mới dữ liệu trong khoảng 1 ngày một lần.");
-            }
+            const diffDays = Math.ceil(Math.abs(endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            // Bạn có thể bỏ comment dòng dưới nếu muốn giới hạn số ngày
+            // if (diffDays >= 2) throw new Error("Tùy chỉnh: Chỉ được làm mới 1 ngày/lần.");
         }
         
+        // [QUAN TRỌNG] Gọi đúng API Fanpage
         const response = await fetch('/api/refresh_fanpage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1328,14 +1327,15 @@ async function handleFanpageRefreshData() {
         }
 
         const result = await response.json();
-        showNotification(result.message || 'Đã tiếp nhận yêu cầu làm mới Fanpage!', 'success');
+        showNotification(result.message || 'Đã tiếp nhận yêu cầu!', 'success');
         
+        // Bắt đầu kiểm tra trạng thái và hiển thị đếm giờ
         startFanpageRefreshStatusCheck(button, originalText); 
 
     } catch (error) {
         console.error('Lỗi khi tải dữ liệu Fanpage:', error);
-        // Lỗi (bao gồm cả lỗi validation) sẽ được show ở đây
-        showNotification(`Lỗi khi tải dữ liệu: ${error.message}`, 'error');
+        showNotification(`Lỗi: ${error.message}`, 'error');
+        setButtonIdle(button, originalText); // Reset nút nếu lỗi ngay lập tức
     }
 }
 
@@ -1370,32 +1370,41 @@ function startAdsRefreshStatusCheck(button, originalText) {
 }
 
 /**
- * [MỚI] Kiểm tra trạng thái làm mới dữ liệu Fanpage (Panel Fanpage)
+ * [SỬA] Kiểm tra trạng thái Fanpage và hiển thị (00s)
  */
 function startFanpageRefreshStatusCheck(button, originalText) {
+    const span = button.querySelector('span');
+
     const checkStatus = async () => {
         try {
             const response = await fetch('/api/status/fanpage');
             const statusData = await response.json();
 
             if (statusData.status === 'fanpage_refreshing') {
-                // Vẫn đang chạy
-                button.querySelector('span').innerText = `Đang cập nhật (${statusData.elapsed_time}s)...`;
+                // [HIỂN THỊ] Cập nhật số giây đang chạy
+                if (span) {
+                    span.innerText = `Đang tải (${statusData.elapsed_time}s)...`;
+                }
+                // Tiếp tục kiểm tra sau 3 giây
                 setTimeout(checkStatus, 3000);
             } else {
-                // Đã xong hoặc lỗi
+                // Đã xong
                 showNotification('Cập nhật dữ liệu Fanpage HOÀN TẤT.', 'success');
                 setButtonIdle(button, originalText);
-                handleFanpageApplyFilters(); // Tải lại dashboard
+                
+                // Tự động load lại dữ liệu mới lên biểu đồ
+                handleFanpageApplyFilters(); 
             }
         } catch (error) {
             console.error('Lỗi kiểm tra trạng thái Fanpage:', error);
-            showNotification('Lỗi server khi kiểm tra trạng thái Fanpage.', 'error');
-            setButtonIdle(button, originalText);
+            // Đừng show lỗi liên tục nếu server lag 1 nhịp, nhưng nếu lỗi hẳn thì reset
+            // setButtonIdle(button, originalText);
+            setTimeout(checkStatus, 3000); // Thử lại
         }
     };
-    // Khởi động lần đầu
-    setTimeout(checkStatus, 100); 
+    
+    // Khởi động kiểm tra ngay
+    checkStatus(); 
 }
 
 /**

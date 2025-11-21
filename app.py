@@ -1298,10 +1298,10 @@ def handle_chat():
 def refresh_data_fanpage():
     """
     [ASYNC] Kích hoạt quy trình làm mới dữ liệu FANPAGE chạy ngầm.
-    [ĐÃ SỬA] Thực hiện refresh theo từng ngày (daily loop) để tránh timeout.
     """
-    # 1. Kiểm tra cờ
-    if task_status['fanpage_refreshing']:
+    # [SỬA 1] Đọc trạng thái từ File thay vì biến toàn cục RAM
+    current_status = load_task_status()
+    if current_status.get('fanpage_refreshing'):
         return jsonify({'message': 'Hệ thống đang cập nhật Fanpage. Vui lòng đợi...'}), 429
 
     try:
@@ -1310,7 +1310,7 @@ def refresh_data_fanpage():
         end_date_input = data.get('end_date')
         date_preset = data.get('date_preset')
 
-        # Logic xác định ngày (giữ nguyên)
+        # Logic xác định ngày (Giữ nguyên)
         start_date, end_date = None, None
         if date_preset and date_preset in DATE_PRESET:
             today = datetime.strptime(end_date_input, '%Y-%m-%d').date() if end_date_input else datetime.today().date()
@@ -1324,7 +1324,7 @@ def refresh_data_fanpage():
         
         # 2. Hàm chạy ngầm (Worker)
         def run_async_job(app_context, s_date_str, e_date_str):
-            import time # Import time here for use in the thread
+            import time
             from datetime import datetime, timedelta
             
             start_date_worker = datetime.strptime(s_date_str, '%Y-%m-%d').date()
@@ -1332,34 +1332,45 @@ def refresh_data_fanpage():
             current_date_worker = start_date_worker
 
             with app_context:
-                logger.info(">>> BẮT ĐẦU THREAD REFRESH FANPAGE (DAILY LOOP) <<<")
-                task_status['fanpage_refreshing'] = True
-                task_status['fanpage_start_time'] = time.time()
+                logger.info(">>> BẮT ĐẦU THREAD REFRESH FANPAGE <<<")
                 
-                while current_date_worker <= end_date_worker:
-                    current_date_str = current_date_worker.strftime('%Y-%m-%d')
-                    
-                    # [FIX] Tăng ngày cuối thêm 1 ngày để API chấp nhận (D to D+1)
-                    until_date_obj = current_date_worker + timedelta(days=1)
-                    until_date_str = until_date_obj.strftime('%Y-%m-%d') # D + 1
-                    
-                    logger.info(f"THREAD FANPAGE: Đang nạp dữ liệu cho ngày: {current_date_str} (API range: {current_date_str} -> {until_date_str})")
+                # [SỬA 2] Ghi trạng thái 'Đang chạy' vào FILE JSON
+                status_update = load_task_status()
+                status_update['fanpage_refreshing'] = True
+                status_update['fanpage_start_time'] = time.time()
+                save_task_status(status_update)
+                
+                try:
+                    while current_date_worker <= end_date_worker:
+                        current_date_str = current_date_worker.strftime('%Y-%m-%d')
+                        
+                        # D to D+1 logic
+                        until_date_obj = current_date_worker + timedelta(days=1)
+                        until_date_str = until_date_obj.strftime('%Y-%m-%d') 
+                        
+                        logger.info(f"THREAD FANPAGE: Nạp {current_date_str}")
 
-                    try:
-                        db_manager.refresh_data_fanpage(
-                            start_date=current_date_str, 
-                            end_date=until_date_str # <--- SỬA: Pass D + 1
-                        )
-                    except Exception as e:
-                        logger.error(f"THREAD FANPAGE: LỖI khi nạp ngày {current_date_str}: {e}")
-                        # Log lỗi và tiếp tục ngày tiếp theo
-                    
-                    current_date_worker += timedelta(days=1)
-                    time.sleep(1) # Throttling nhẹ 1 giây
+                        try:
+                            db_manager.refresh_data_fanpage(
+                                start_date=current_date_str, 
+                                end_date=until_date_str 
+                            )
+                        except Exception as e:
+                            logger.error(f"Lỗi nạp Fanpage ngày {current_date_str}: {e}")
+                        
+                        current_date_worker += timedelta(days=1)
+                        time.sleep(1) # Throttling
 
-                logger.info(">>> KẾT THÚC THREAD REFRESH FANPAGE: HOÀN THÀNH LOOP <<<")
-                task_status['fanpage_refreshing'] = False
-                task_status['fanpage_start_time'] = None
+                finally:
+                    logger.info(">>> KẾT THÚC THREAD REFRESH FANPAGE <<<")
+                    # Thêm delay nhỏ để Frontend kịp nhìn thấy trạng thái
+                    time.sleep(2)
+
+                    # [SỬA 3] Ghi trạng thái 'Đã xong' vào FILE JSON
+                    final_status = load_task_status()
+                    final_status['fanpage_refreshing'] = False
+                    final_status['fanpage_start_time'] = None
+                    save_task_status(final_status)
 
         # 3. Khởi tạo Thread
         thread = threading.Thread(target=run_async_job, args=(
@@ -1369,10 +1380,10 @@ def refresh_data_fanpage():
         ))
         thread.start()
         
-        return jsonify({'message': 'Đã tiếp nhận yêu cầu! Dữ liệu Fanpage đang được cập nhật ngầm (theo từng ngày).'})
+        return jsonify({'message': 'Đã tiếp nhận! Dữ liệu Fanpage đang cập nhật ngầm.'})
     
     except Exception as e:
-        logger.error(f"Lỗi khi kích hoạt refresh Fanpage: {e}", exc_info=True)
+        logger.error(f"Lỗi refresh Fanpage: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 # ======================================================================
