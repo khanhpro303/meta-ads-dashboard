@@ -1,14 +1,14 @@
-# Đây là script Python để tự động nạp dữ liệu hàng ngày từ ngày 18-09-2025 đến 15-11-2025
-# Script sẽ lặp qua từng ngày trong khoảng thời gian đã định và gọi hàm refresh_data
-# từ DatabaseManager để nạp dữ liệu cho mỗi ngày.
-# Giữa mỗi lần nạp dữ liệu, script sẽ chờ một khoảng thời gian định sẵn để tránh quá tải hệ thống.
+# Đây là script Python để tự động nạp dữ liệu hàng ngày (ADS + FANPAGE)
+# Script sẽ lặp qua từng ngày trong khoảng thời gian đã định.
+# Quy trình mỗi ngày: 
+# 1. Nạp Ads Data -> 2. Sleep 1.5s -> 3. Nạp Fanpage Data -> 4. Sleep 4s -> Ngày tiếp theo.
+
 import logging
 import time
 from datetime import date, timedelta
 from database_manager import DatabaseManager
 
 # Cấu hình logging cơ bản
-# Đảm bảo bạn có thể thấy output trong console
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -17,18 +17,21 @@ logging.basicConfig(
 
 # --- CẤU HÌNH ---
 # Ngày bắt đầu (bao gồm)
-START_DATE = date(2025, 11, 12)
+START_DATE = date(2025, 11, 1)
 # Ngày kết thúc (bao gồm)
-END_DATE = date(2025, 11, 12)
-# Thời gian chờ (giây) giữa mỗi lần nạp dữ liệu
-WAIT_SECONDS = 10
+END_DATE = date(2025, 11, 10)
+
+# Thời gian chờ kết thúc 1 ngày (giây)
+WAIT_SECONDS_END_OF_DAY = 4
+# Thời gian chờ giữa Ads task và Fanpage task (giây)
+WAIT_SECONDS_BETWEEN_TASKS = 1.5
 # ------------------
 
 def main():
     """
-    Script chính để lặp qua các ngày và nạp dữ liệu.
+    Script chính để lặp qua các ngày và nạp dữ liệu tổng hợp.
     """
-    logging.info("--- BẮT ĐẦU SCRIPT NẠP DỮ LIỆU TỰ ĐỘNG ---")
+    logging.info("--- BẮT ĐẦU SCRIPT NẠP DỮ LIỆU TỰ ĐỘNG (ADS & FANPAGE) ---")
     
     try:
         db_manager = DatabaseManager()
@@ -48,29 +51,52 @@ def main():
         # Định dạng ngày thành chuỗi 'YYYY-MM-DD'
         current_date_str = current_date.strftime('%Y-%m-%d')
         
-        logging.info(f"--- [Ngày {day_count}/{total_days}] Bắt đầu nạp dữ liệu cho ngày: {current_date_str} ---")
+        logging.info(f"========== [Ngày {day_count}/{total_days} - {current_date_str}] BẮT ĐẦU XỬ LÝ ==========")
         
+        # ---------------------------------------------------------
+        # BƯỚC 1: NẠP DỮ LIỆU QUẢNG CÁO (ADS)
+        # ---------------------------------------------------------
         try:
-            # Gọi hàm refresh_data cho CHỈ MỘT NGÀY
-            # Bằng cách đặt start_date và end_date giống nhau
+            logging.info(f"-> [1/2] Đang nạp ADS DATA cho ngày: {current_date_str}...")
             db_manager.refresh_data(
                 start_date=current_date_str,
                 end_date=current_date_str
             )
-            logging.info(f"--- [Ngày {day_count}/{total_days}] Hoàn thành nạp dữ liệu cho ngày: {current_date_str} ---")
-
+            logging.info(f"-> [1/2] Hoàn thành nạp ADS DATA.")
         except Exception as e:
-            # Nếu một ngày bị lỗi, ghi lại lỗi và tiếp tục ngày tiếp theo
-            logging.error(f"--- [Ngày {day_count}/{total_days}] Gặp lỗi khi nạp dữ liệu cho ngày {current_date_str}. Lỗi: {e} ---", exc_info=True)
+            logging.error(f"-> [1/2] LỖI nạp ADS DATA ngày {current_date_str}: {e}", exc_info=True)
         
+        # ---------------------------------------------------------
+        # BƯỚC 2: SLEEP 1.5 GIÂY
+        # ---------------------------------------------------------
+        logging.info(f"... Nghỉ {WAIT_SECONDS_BETWEEN_TASKS}s trước khi nạp Fanpage ...")
+        time.sleep(WAIT_SECONDS_BETWEEN_TASKS)
+
+        # ---------------------------------------------------------
+        # BƯỚC 3: NẠP DỮ LIỆU FANPAGE
+        # ---------------------------------------------------------
+        try:
+            logging.info(f"-> [2/2] Đang nạp FANPAGE DATA cho ngày: {current_date_str}...")
+            db_manager.refresh_data_fanpage(
+                start_date=current_date_str,
+                end_date=current_date_str
+            )
+            logging.info(f"-> [2/2] Hoàn thành nạp FANPAGE DATA.")
+        except Exception as e:
+            logging.error(f"-> [2/2] LỖI nạp FANPAGE DATA ngày {current_date_str}: {e}", exc_info=True)
+
+        logging.info(f"========== [Ngày {day_count}/{total_days} - {current_date_str}] HOÀN TẤT ==========")
+
         # Tăng ngày lên
         current_date += timedelta(days=1)
         day_count += 1
         
-        # Nếu chưa phải ngày cuối cùng, chờ
+        # ---------------------------------------------------------
+        # BƯỚC 4: SLEEP 4 GIÂY (NẾU CÒN NGÀY TIẾP THEO)
+        # ---------------------------------------------------------
         if current_date <= END_DATE:
-            logging.info(f"Đang chờ {WAIT_SECONDS} giây trước khi nạp ngày tiếp theo...")
-            time.sleep(WAIT_SECONDS)
+            logging.info(f"Đang chờ {WAIT_SECONDS_END_OF_DAY} giây trước khi sang ngày tiếp theo...")
+            time.sleep(WAIT_SECONDS_END_OF_DAY)
 
     logging.info("--- ĐÃ HOÀN THÀNH TOÀN BỘ QUÁ TRÌNH NẠP DỮ LIỆU ---")
 
