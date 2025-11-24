@@ -17,9 +17,9 @@ logging.basicConfig(
 
 # --- CẤU HÌNH ---
 # Ngày bắt đầu (bao gồm)
-START_DATE = date(2025, 11, 1)
+START_DATE = date(2025, 8, 1)
 # Ngày kết thúc (bao gồm)
-END_DATE = date(2025, 11, 10)
+END_DATE = date(2025, 11, 1)
 
 # Thời gian chờ kết thúc 1 ngày (giây)
 WAIT_SECONDS_END_OF_DAY = 4
