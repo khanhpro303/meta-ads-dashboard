@@ -1700,7 +1700,7 @@ def get_fanpage_cover():
         '248822825627335': '../static/images/bbi_cover.png',
         '168476889690455': '../static/images/ego_cover.png',
         '937224289677041': '../static/images/yohe_cover.png',
-        '273719346452016': '..static/images/ls2_cover.png'
+        '273719346452016': '../static/images/ls2_cover.png'
     }
 
     try:
