@@ -10,6 +10,7 @@ import pytz
 import requests
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
+from storage_manager import StorageManager
 
 
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +25,7 @@ class FacebookAdsExtractor:
         self.base_url = os.getenv("BASE_URL", "https://graph.facebook.com/v24.0")
         self.account_ids = []
         self.account_names = []
+        self.storage_manager = StorageManager()
         if not self.access_token:
             raise ValueError("SECRET_KEY không được cấu hình")
         
@@ -1112,11 +1114,20 @@ class FacebookAdsExtractor:
                     if properties_list and isinstance(properties_list, list) and len(properties_list) > 0:
                         # Lấy 'text' từ dict ĐẦU TIÊN trong list
                         properties_text = properties_list[0].get('text')
+                    post_id = post.get('id')
+                    original_url = post.get('full_picture')
+                    final_picture_url = original_url
+                    if original_url:
+                        # Gọi hàm upload sang R2
+                        final_picture_url = self.storage_manager.process_and_upload_image(
+                            original_url, 
+                            post_id
+                        )
                     post_data = {
                         'post_id': post.get('id'),
                         'message': post.get('message', 'Không có nội dung text'),
                         'created_time': post.get('created_time'),
-                        'full_picture_url': post.get('full_picture'),
+                        'full_picture_url': final_picture_url,
                         'shares_count': post.get('shares', {}).get('count', 0),
                         'properties': properties_text,
                         'fetch_range': f"{start_date}_to_{end_date}"
