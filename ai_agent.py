@@ -3,6 +3,7 @@ from langchain.chat_models import init_chat_model
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import HumanMessage
+from langchain.tools import tool
 from dotenv import load_dotenv
 import os
 import logging
@@ -35,7 +36,7 @@ class AIAgent:
 
         # Create toolkit with tools
         toolkit = SQLDatabaseToolkit(db=self.db, llm=self.model)
-        tools = toolkit.get_tools()
+        tools_db = toolkit.get_tools()
 
         # ĐỊNH NGHĨA VISION TOOL (CÔNG CỤ NHÌN ẢNH)
         @tool
@@ -75,9 +76,9 @@ class AIAgent:
             except Exception as e:
                 return f"Lỗi khi phân tích ảnh: {str(e)}"
         
-        self.tools = tools + [analyze_image_from_url]
+        self.tools = tools_db + [analyze_image_from_url]
 
-        for tool in tools:
+        for tool in self.tools:
             logger.info(f"{tool.name}: {tool.description}\n")
         
         # Create system prompt
