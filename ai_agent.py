@@ -28,7 +28,7 @@ class AIAgent:
         )
         # Initialize model
         self.model = init_chat_model(
-            "google_genai:gemini-2.5-pro",
+            "google_genai:gemini-2.5-flash",
             rate_limiter=rate_limiter
             )
 

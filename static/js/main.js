@@ -155,18 +155,29 @@ document.addEventListener('DOMContentLoaded', () => {
                                 
                                 // --- XỬ LÝ TRẠNG THÁI (STATUS) ---
                                 if (payload.status) {
-                                    // Tìm bong bóng loading hiện tại
                                     const loadingBubble = chatBody.querySelector(".loading-indicator-wrapper .loading-bubble");
                                     if (loadingBubble) {
-                                        // Cập nhật text trạng thái (ví dụ: "Đang truy vấn database...")
-                                        // Thêm icon xoay xoay cho sinh động (dùng feather icon loader)
-                                        loadingBubble.innerHTML = `
-                                            <div class="flex items-center gap-2">
-                                                <i data-feather="loader" class="w-3 h-3 animate-spin"></i>
-                                                <span>${payload.status}</span>
-                                            </div>
-                                        `;
-                                        feather.replace(); // Render lại icon
+                                        // Kiểm tra xem đã có thẻ span chứa status text chưa
+                                        let statusTextSpan = loadingBubble.querySelector(".ai-status-text");
+
+                                        if (!statusTextSpan) {
+                                            // LẦN ĐẦU: Cấu trúc lại bong bóng để chứa cả 3 chấm và Text
+                                            // Dùng Flexbox để xếp chúng nằm ngang (row)
+                                            loadingBubble.innerHTML = `
+                                                <div class="flex items-center gap-3">
+                                                    <div class="typing-indicator flex space-x-1">
+                                                        <span>•</span><span>•</span><span>•</span>
+                                                    </div>
+                                                    <span class="ai-status-text text-sm text-gray-500 italic animate-pulse">
+                                                        ${payload.status}
+                                                    </span>
+                                                </div>
+                                            `;
+                                        } else {
+                                            // CÁC LẦN SAU: Chỉ cập nhật nội dung text (để 3 chấm không bị reset animation)
+                                            statusTextSpan.innerText = payload.status;
+                                        }
+                                        
                                         chatBody.scrollTop = chatBody.scrollHeight;
                                     }
                                 }
