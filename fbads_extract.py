@@ -1043,7 +1043,8 @@ class FacebookAdsExtractor:
         
     def get_posts_with_lifetime_insights(self, page_id: str, page_access_token: str,
                                          start_date: str, end_date: str,
-                                         metrics_list: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                                         metrics_list: Optional[List[str]] = None,
+                                         skip_media: bool = False) -> List[Dict[str, Any]]:
         """
         Lấy các bài post được TẠO trong khoảng
         start_date và end_date. Lấy media, shares, comment_count, và metrics LIFETIME. Backend JS sẽ xử lý date_preset và input vào sau.
@@ -1054,6 +1055,7 @@ class FacebookAdsExtractor:
             start_date (str): Ngày bắt đầu (YYYY-MM-DD).
             end_date (str): Ngày kết thúc (YYYY-MM-DD).
             metrics_list (Optional[List[str]]): Danh sách metric. Nếu None, dùng mặc định.
+            skip_media (bool): Nếu True, sẽ không upload ảnh lên R2 (để chạy nhanh/tiết kiệm).
         """
         all_posts_data = []
         
@@ -1119,8 +1121,11 @@ class FacebookAdsExtractor:
                     post_id = post.get('id')
                     original_url = post.get('full_picture')
                     final_picture_url = original_url
-                    if original_url:
-                        # Gọi hàm upload sang R2
+                    if skip_media:
+                        # Nếu skip, gán là None để Database Manager biết đường giữ lại ảnh cũ
+                        final_picture_url = None 
+                    elif original_url:
+                        # Logic cũ: Gọi hàm upload sang R2
                         final_picture_url = self.storage_manager.process_and_upload_image(
                             original_url, 
                             post_id

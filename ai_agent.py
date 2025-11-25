@@ -18,7 +18,7 @@ load_dotenv()
 class AIAgent:
     def __init__(self):
         # Initialize model
-        self.model = init_chat_model("google_genai:gemini-2.5-pro")
+        self.model = init_chat_model("google_genai:gemini-2.5-flash")
 
         # Connect to Postgres
         self.db_url = os.getenv('DATABASE_URL')

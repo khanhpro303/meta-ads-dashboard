@@ -986,7 +986,7 @@ class DatabaseManager:
                 'created_time': stmt.excluded.created_time,
                 'post_type': stmt.excluded.post_type,
                 'message': stmt.excluded.message,
-                'full_picture_url': stmt.excluded.full_picture_url,
+                'full_picture_url': func.coalesce(stmt.excluded.full_picture_url, FactPostPerformance.full_picture_url),
                 'shares_count': stmt.excluded.shares_count,
                 'comments_total_count': stmt.excluded.comments_total_count,
                 'lt_post_reactions_like_total': stmt.excluded.lt_post_reactions_like_total,
@@ -1318,7 +1318,7 @@ class DatabaseManager:
             # Ném lại lỗi để endpoint có thể bắt và trả về thông báo lỗi
             raise
     
-    def refresh_data_fanpage(self, start_date: str, end_date: str):
+    def refresh_data_fanpage(self, start_date: str, end_date: str, skip_media: bool = False):
         """
         Hàm chính để điều phối quy trình ETL cho Fanpage:
         1. Lấy danh sách Fanpage.
@@ -1374,7 +1374,8 @@ class DatabaseManager:
                     page_access_token=page_token,
                     start_date=start_date,
                     end_date=end_date,
-                    metrics_list=None # Dùng default metrics
+                    metrics_list=None, # Dùng default metrics
+                    skip_media=skip_media
                 )
                 
                 # Thêm page_id vào mỗi record post để load vào DB

@@ -19,7 +19,7 @@ logging.basicConfig(
 # Ngày bắt đầu (bao gồm)
 START_DATE = date(2025, 8, 1)
 # Ngày kết thúc (bao gồm)
-END_DATE = date(2025, 11, 1)
+END_DATE = date(2025, 11, 24)
 
 # Thời gian chờ kết thúc 1 ngày (giây)
 WAIT_SECONDS_END_OF_DAY = 4
@@ -79,7 +79,8 @@ def main():
             logging.info(f"-> [2/2] Đang nạp FANPAGE DATA cho ngày: {current_date_str}...")
             db_manager.refresh_data_fanpage(
                 start_date=current_date_str,
-                end_date=current_date_str
+                end_date=current_date_str,
+                skip_media=True
             )
             logging.info(f"-> [2/2] Hoàn thành nạp FANPAGE DATA.")
         except Exception as e:
