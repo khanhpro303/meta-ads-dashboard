@@ -17,7 +17,7 @@ logging.basicConfig(
 
 # --- CẤU HÌNH ---
 # Ngày bắt đầu (bao gồm)
-START_DATE = date(2025, 8, 1)
+START_DATE = date(2025, 10, 14)
 # Ngày kết thúc (bao gồm)
 END_DATE = date(2025, 11, 24)
 
