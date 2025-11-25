@@ -78,8 +78,8 @@ class AIAgent:
         
         self.tools = tools_db + [analyze_image_from_url]
 
-        for tool in self.tools:
-            logger.info(f"{tool.name}: {tool.description}\n")
+        for t in self.tools:
+            logger.info(f"{t.name}: {t.description}\n")
         
         # Create system prompt
         system_prompt = """
