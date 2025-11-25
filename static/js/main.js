@@ -165,9 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             // Dùng Flexbox để xếp chúng nằm ngang (row)
                                             loadingBubble.innerHTML = `
                                                 <div class="flex items-center gap-3">
-                                                    <div class="typing-indicator flex space-x-1">
-                                                        
-                                                    </div>
+                                                    <div class="typing-indicator"><span></span><span></span><span></span></div>
                                                     <span class="ai-status-text text-sm text-gray-500 italic animate-pulse">
                                                         ${payload.status}
                                                     </span>
