@@ -12,99 +12,11 @@ import logging
 import datetime
 import requests
 import base64
-import time
-
-import hashlib
-import json
-from langchain.agents.middleware import AgentMiddleware
-from langchain.tools.tool_node import ToolCallRequest
-from langchain.messages import ToolMessage
-from langgraph.types import Command
+from functools import lru_cache
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 load_dotenv()
-
-class DynamicCacheMiddleware(AgentMiddleware):
-    """Cache động cho bất kỳ tool nào"""
-    
-    def __init__(self, ttl_seconds: int = 300):
-        self.cache = {}
-        self.ttl_seconds = ttl_seconds
-        self.cache_hits = 0
-        self.cache_misses = 0
-    
-    def _get_cache_key(self, tool_name: str, tool_args: dict) -> str:
-        """Tạo key cache từ tool name + arguments"""
-        args_str = json.dumps(tool_args, sort_keys=True)
-        args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:8]
-        return f"{tool_name}:{args_hash}"
-    
-    def _is_cache_valid(self, cache_entry: dict) -> bool:
-        """Kiểm tra cache còn hạn không"""
-        current_time = time.time()
-        return (current_time - cache_entry["timestamp"]) < self.ttl_seconds
-    
-    def wrap_tool_call(
-        self,
-        request: ToolCallRequest,
-        handler,
-    ) -> ToolMessage | Command:
-        """Intercept mỗi tool call"""
-        tool_name = request.tool_call["name"]
-        tool_args = request.tool_call["args"]
-        
-        # Bỏ qua cache cho image analysis (thay đổi)
-        no_cache_tools = ["analyze_image_from_url"]
-        if tool_name in no_cache_tools:
-            return handler(request)
-        
-        # Tạo cache key
-        cache_key = self._get_cache_key(tool_name, tool_args)
-        
-        # Kiểm tra cache
-        if cache_key in self.cache:
-            cache_entry = self.cache[cache_key]
-            if self._is_cache_valid(cache_entry):
-                # ✅ HIT - Trả kết quả từ cache
-                self.cache_hits += 1
-                logger.info(f"🟢 CACHE HIT: {tool_name} (Hits: {self.cache_hits})")
-                
-                return ToolMessage(
-                    content=cache_entry["result"],
-                    tool_call_id=request.tool_call["id"],
-                    name=tool_name,
-                )
-            else:
-                del self.cache[cache_key]
-        
-        # ❌ MISS - Chạy tool thực tế
-        self.cache_misses += 1
-        logger.info(f"🔴 CACHE MISS: {tool_name} (Misses: {self.cache_misses})")
-        
-        result = handler(request)
-        
-        # Lưu cache
-        if isinstance(result, ToolMessage):
-            self.cache[cache_key] = {
-                "result": result.content,
-                "timestamp": time.time(),
-                "tool_name": tool_name,
-            }
-        
-        return result
-    
-    def get_cache_stats(self) -> dict:
-        """Trả về stats cache"""
-        total = self.cache_hits + self.cache_misses
-        hit_rate = (self.cache_hits / total * 100) if total > 0 else 0
-        return {
-            "total_requests": total,
-            "cache_hits": self.cache_hits,
-            "cache_misses": self.cache_misses,
-            "hit_rate": f"{hit_rate:.1f}%",
-            "cached_items": len(self.cache),
-        }
 
 class AIAgent:
     def __init__(self):
@@ -117,7 +29,8 @@ class AIAgent:
         # Initialize model
         self.model = init_chat_model(
             "google_genai:gemini-2.5-flash",
-            rate_limiter=rate_limiter
+            rate_limiter=rate_limiter,
+            temperature=0
             )
 
         # Connect to Postgres
@@ -138,25 +51,31 @@ class AIAgent:
         toolkit = SQLDatabaseToolkit(db=self.db, llm=self.model)
         tools_db = toolkit.get_tools()
 
-        # ĐỊNH NGHĨA VISION TOOL (CÔNG CỤ NHÌN ẢNH)
+        @lru_cache(maxsize=50) # Cache 50 request gần nhất
+        def _fetch_image_base64(url: str):
+            response = requests.get(url, stream=True, timeout=10)
+            if response.status_code != 200:
+                return None
+            return base64.b64encode(response.content).decode("utf-8")
+
         @tool
         def analyze_image_from_url(image_url: str, question: str):
             """
-            Phân tích ảnh mà KHÔNG gọi LLM thêm.
-            Chỉ tải ảnh, không xử lý AI.
+            Công cụ lấy dữ liệu ảnh từ URL để AI phân tích. 
+            Luôn dùng công cụ này khi người dùng hỏi về nội dung của một bức ảnh (url).
             """
             try:
-                response = requests.get(image_url, stream=True, timeout=10)
-                if response.status_code != 200:
+                # Gọi hàm đã được cache
+                image_data = _fetch_image_base64(image_url)
+                if not image_data:
                     return f"Lỗi: Không thể tải ảnh từ {image_url}"
                 
-                image_data = base64.b64encode(response.content).decode("utf-8")
-                
-                # ✅ TRẢ VỀ CẤU TRÚC CHO AGENT LÀM VIỆC
+                # Trả về cấu trúc content block chuẩn của Gemini/LangChain
+                # Để model hiểu đây là input đa phương thức
                 return {
-                    "image_url": f"data:image/jpeg;base64,{image_data}",
-                    "question": question,
-                    "status": "ready_for_analysis"
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                    "text_context": question # Gợi ý context
                 }
             except Exception as e:
                 return f"Lỗi khi xử lý ảnh: {str(e)}"
@@ -183,37 +102,26 @@ class AIAgent:
 
         KHÔNG thực hiện bất kỳ câu lệnh DML nào (CHÈN, CẬP NHẬT, XÓA, THẢ, v.v.) đối với cơ sở dữ liệu.
 
-        Để bắt đầu, bạn LUÔN nên nhìn vào các bảng trong cơ sở dữ liệu để xem bạn
-        có thể truy vấn những gì. KHÔNG bỏ qua bước này.
-
-        Sau đó, bạn nên truy vấn schema của các bảng phù hợp nhất.
-
-        KHI NGƯỜI DÙNG HỎI VỀ HÌNH ẢNH:
-            1. Dùng SQL tool để lấy bài post có hình ảnh
-            2. Dùng analyze_image_from_url tool để lấy dữ liệu ảnh (base64)
-            3. Nhìn ảnh trực tiếp (AI model của bạn hỗ trợ vision)
-            4. Trả lời dựa trên vision reasoning của LLM
-
-        HỮU DỤNG: Khi bạn nhận được kết quả từ analyze_image_from_url, 
-        hãy xem ảnh trong nội dung của nó (trường "image_url").
+        QUY TRÌNH LÀM VIỆC:
+        1. Nếu cần dữ liệu số: Kiểm tra bảng -> Query schema -> Query dữ liệu.
+        2. Nếu cần xem ảnh: 
+           - Query lấy URL ảnh từ DB.
+           - Dùng tool `analyze_image_from_url` với URL đó. Tool này sẽ trả về dữ liệu ảnh.
+           - Bạn tự sử dụng khả năng vision của mình để trả lời câu hỏi dựa trên dữ liệu ảnh nhận được.
 
         Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm.
-        Bạn không cần in đậm hay format văn bản gì khi gửi trả lời để tránh hiển thị ***. Đừng quên điều này.
+        Bạn không dùng markdown khi gửi trả lời để tránh hiển thị ***. Đừng quên điều này.
         """.format(
             dialect=self.db.dialect,
             top_k=2,
             year=datetime.date.today().year
         )
 
-        # ✅ TẠO MIDDLEWARE CACHE ĐỘNG
-        self.cache_middleware = DynamicCacheMiddleware(ttl_seconds=300)
-
         # Create agent
         self.agent = create_agent(
             self.model,
             self.tools,
-            system_prompt=system_prompt,
-            middleware=[self.cache_middleware]
+            system_prompt=system_prompt
         )
     
     def ask(self, query: str):
