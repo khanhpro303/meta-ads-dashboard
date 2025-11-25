@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 messageDiv.innerHTML = text.replace(/\n/g, '<br>');
             } else if (sender === 'loading') {
                 messageWrapper.classList.add("flex", "justify-start", "loading-indicator-wrapper");
-                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm");
+                messageDiv.classList.add("bg-gray-100", "text-gray-800", "p-3", "rounded-lg", "max-w-xs", "shadow-sm", "loading-bubble");
                 messageDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
             }
             messageWrapper.appendChild(messageDiv);
@@ -107,47 +107,38 @@ document.addEventListener('DOMContentLoaded', () => {
         async function sendMessageToServer() {
             const messageText = input.value.trim();
             if (messageText === "") return;
+            
+            // 1. Hiển thị tin nhắn người dùng
             addMessage(messageText, "user");
             input.value = ""; 
             
-            // Thêm indicator loading trước khi gọi API
-            const loadingIndicatorWrapper = addMessage(null, "loading");
-            let botMessageDiv = null; // Biến để giữ tham chiếu đến div tin nhắn của bot
+            // 2. Thêm indicator loading (Mặc định là 3 chấm)
+            // Lưu ý: Không xóa biến này ngay, ta sẽ cập nhật nó
+            addMessage(null, "loading");
+            let botMessageDiv = null; // Biến giữ tham chiếu đến tin nhắn chính thức của Bot
 
             try {
-                // [THAY ĐỔI LỚN] Sử dụng Fetch API với Response Streaming
                 const response = await fetch("/api/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ message: messageText }),
                 });
 
-                // Kiểm tra HTTP Status
                 if (!response.ok || !response.body) {
                     const errorText = await response.text();
-                    throw new Error(`Lỗi server (${response.status}): ${errorText.substring(0, 100)}...`);
+                    throw new Error(`Lỗi server (${response.status})`);
                 }
                 
-                // Khởi tạo div tin nhắn bot
-                removeLoadingIndicator(); 
-                const messageWrapper = addMessage("", "bot");
-                botMessageDiv = messageWrapper.querySelector('div');
-                botMessageDiv.textContent = ""; // Xóa nội dung mặc định
-
-                // Khởi tạo Reader và Decoder cho luồng dữ liệu
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let buffer = "";
 
-                // Bắt đầu đọc luồng
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
                     buffer += decoder.decode(value, { stream: true });
                     
-                    // Xử lý luồng SSE (Server-Sent Events)
-                    // Vì chúng ta đang dùng format SSE: data: <JSON payload>\n\n
                     let boundary = buffer.indexOf('\n\n');
                     while (boundary !== -1) {
                         const chunk = buffer.substring(0, boundary).trim();
@@ -155,42 +146,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         if (chunk.startsWith("data:")) {
                             let jsonString = chunk.substring(5).trim();
-                            
-                            // [DONE] là tín hiệu kết thúc
-                            if (jsonString === '[DONE]') {
-                                break;
-                            }
+                            if (jsonString === '[DONE]') break;
                             
                             try {
                                 const payload = JSON.parse(jsonString);
                                 
-                                // Nếu có lỗi (được gửi trong luồng)
-                                if (payload.error) {
-                                    throw new Error(payload.error);
+                                if (payload.error) throw new Error(payload.error);
+                                
+                                // --- XỬ LÝ TRẠNG THÁI (STATUS) ---
+                                if (payload.status) {
+                                    // Tìm bong bóng loading hiện tại
+                                    const loadingBubble = chatBody.querySelector(".loading-indicator-wrapper .loading-bubble");
+                                    if (loadingBubble) {
+                                        // Cập nhật text trạng thái (ví dụ: "Đang truy vấn database...")
+                                        // Thêm icon xoay xoay cho sinh động (dùng feather icon loader)
+                                        loadingBubble.innerHTML = `
+                                            <div class="flex items-center gap-2">
+                                                <i data-feather="loader" class="w-3 h-3 animate-spin"></i>
+                                                <span>${payload.status}</span>
+                                            </div>
+                                        `;
+                                        feather.replace(); // Render lại icon
+                                        chatBody.scrollTop = chatBody.scrollHeight;
+                                    }
                                 }
                                 
-                                // Gắn phần text chunk vào nội dung
+                                // --- XỬ LÝ NỘI DUNG VĂN BẢN (TEXT) ---
                                 if (payload.text) {
+                                    // Nếu đây là chunk text đầu tiên -> Xóa loading -> Tạo bubble chat thật
+                                    if (!botMessageDiv) {
+                                        removeLoadingIndicator(); // Lúc này mới xóa loading/status đi
+                                        const messageWrapper = addMessage("", "bot");
+                                        botMessageDiv = messageWrapper.querySelector('div');
+                                        botMessageDiv.textContent = ""; 
+                                    }
+                                    
+                                    // Ghi thêm text vào
                                     botMessageDiv.textContent += payload.text;
-                                    chatBody.scrollTop = chatBody.scrollHeight; // Cuộn xuống
+                                    chatBody.scrollTop = chatBody.scrollHeight;
                                 }
                                 
                             } catch (e) {
-                                console.error("Lỗi parse JSON trong stream:", e);
-                                // Gán lỗi và kết thúc
-                                botMessageDiv.textContent += `\n\n[LỖI PHÂN TÍCH]`;
-                                break; 
+                                console.warn("JSON Parse warning:", e);
                             }
                         }
-
                         boundary = buffer.indexOf('\n\n');
                     }
-                    if (buffer.includes('[DONE]')) break; // Thoát vòng lặp nếu DONE
+                    if (buffer.includes('[DONE]')) break;
                 }
                 
-                // Xử lý các xuống dòng HTML sau khi stream xong
+                // Format lại xuống dòng sau khi xong
                 if (botMessageDiv) {
                     botMessageDiv.innerHTML = botMessageDiv.textContent.replace(/\n/g, '<br>');
+                } else {
+                    // Trường hợp stream xong mà không có text nào (chỉ có status rồi tắt)
+                    removeLoadingIndicator();
                 }
 
             } catch (error) {
