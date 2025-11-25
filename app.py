@@ -1493,7 +1493,8 @@ def get_fanpage_overview_data():
             return session.query(
                 func.sum(FactPostPerformance.lt_post_clicks).label('clicks'),
                 func.sum(FactPostPerformance.comments_total_count).label('comments'),
-                func.sum(FactPostPerformance.lt_post_reactions_like_total).label('post_likes')
+                func.sum(FactPostPerformance.lt_post_reactions_like_total).label('post_likes'),
+                func.sum(FactPostPerformance.lt_post_impressions_organic_unique).label('organic_impressions')
             ).filter(FactPostPerformance.page_id == p_id)\
              .filter(FactPostPerformance.created_time.between(s_datetime, e_datetime))\
              .first()
@@ -1536,6 +1537,8 @@ def get_fanpage_overview_data():
             'comments_growth': _calculate_growth(current_post_kpis.comments, prev_post_kpis.comments),
             'post_likes': current_post_kpis.post_likes or 0,
             'post_likes_growth': _calculate_growth(current_post_kpis.post_likes, prev_post_kpis.post_likes),
+            'organic_impressions': current_post_kpis.organic_impressions or 0,
+            'organic_impressions_growth': _calculate_growth(current_post_kpis.organic_impressions, prev_post_kpis.organic_impressions),
         }
 
         # --- Q3: Dữ liệu cho Main Chart (fp-main-chart) ---
@@ -1592,7 +1595,8 @@ def get_fanpage_overview_data():
             func.sum(FactPageMetricsDaily.page_post_engagements).label('engagement'),
             func.sum(FactPageMetricsDaily.page_impressions_unique).label('impressions_unique'), 
             func.sum(FactPageMetricsDaily.page_fan_removes).label('fan_removes'),                 
-            func.sum(FactPageMetricsDaily.page_video_views).label('video_views')
+            func.sum(FactPageMetricsDaily.page_video_views).label('video_views'),
+            func.sum(FactPageMetricsDaily.page_posts_impressions_organic_unique).label('organic_unique')
         ).join(DimDate, FactPageMetricsDaily.date_key == DimDate.date_key)\
          .filter(FactPageMetricsDaily.page_id == page_id)\
          .filter(DimDate.full_date.between(start_date, end_date))\
@@ -1607,8 +1611,8 @@ def get_fanpage_overview_data():
                 'engagement': row.engagement or 0,
                 'impressions_unique': row.impressions_unique or 0,
                 'fan_removes': row.fan_removes or 0,            
-                'video_views': row.video_views or 0
-                # Bỏ 'clicks' và 'comments'
+                'video_views': row.video_views or 0,
+                'organic_unique': row.organic_unique or 0
             } for row in table_query
         ]
 

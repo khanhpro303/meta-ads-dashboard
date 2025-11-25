@@ -911,7 +911,8 @@ class FacebookAdsExtractor:
                 'page_video_views',
                 'page_impressions_unique',
                 'page_daily_unfollows_unique',
-                'page_daily_follows_unique'
+                'page_daily_follows_unique',
+                'page_posts_impressions_organic_unique'
             ]
         metrics_str = ",".join(metrics_list)
         
@@ -1061,7 +1062,8 @@ class FacebookAdsExtractor:
             metrics_list = [
                 'post_reactions_like_total',
                 'post_impressions_unique',
-                'post_clicks'
+                'post_clicks',
+                'post_impressions_organic_unique'
             ]
         metrics_str = ",".join(metrics_list)
         

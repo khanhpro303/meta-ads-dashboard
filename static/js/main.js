@@ -1488,6 +1488,8 @@ function renderFanpageScorecards(scorecards) {
     document.getElementById('fp-kpi-comments-growth').innerHTML = renderGrowthHtml(scorecards.comments_growth, 'percent');
     document.getElementById('fp-kpi-post-likes').innerText = formatNumber(scorecards.post_likes);
     document.getElementById('fp-kpi-post-likes-growth').innerHTML = renderGrowthHtml(scorecards.post_likes_growth, 'percent');
+    document.getElementById('fp-kpi-organic-impressions').innerText = formatNumber(scorecards.organic_impressions);
+    document.getElementById('fp-kpi-organic-impressions-growth').innerHTML = renderGrowthHtml(scorecards.organic_impressions_growth, 'percent');
 }
 
 /**
@@ -1567,9 +1569,10 @@ function renderFanpageInteractionsTable(tableData) {
     let totalImpressionsUnique = 0; // <-- THÊM MỚI
     let totalFanRemoves = 0; // <-- THÊM MỚI
     let totalVideoViews = 0;
+    let totalOrganicUnique = 0;
 
     if (!tableData || tableData.length === 0) {
-        html = `<tr><td colspan="6" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>`;
+        html = `<tr><td colspan="7" class="text-center p-4 text-gray-500">Không có dữ liệu.</td></tr>`;
     } else {
         tableData.forEach(row => {
             html += `
@@ -1578,27 +1581,35 @@ function renderFanpageInteractionsTable(tableData) {
                     <td class="px-4 py-2.5">${formatNumber(row.impressions)}</td>
                     <td class="px-4 py-2.5">${formatNumber(row.engagement)}</td>
                     <td class="px-4 py-2.5">${formatNumber(row.impressions_unique)}</td> 
+                    
+                    <td class="px-4 py-2.5">${formatNumber(row.organic_unique)}</td> 
+                    
                     <td class="px-4 py-2.5">${formatNumber(row.fan_removes)}</td> 
                     <td class="px-4 py-2.5">${formatNumber(row.video_views)}</td>
                 </tr>
             `;
-            // Cộng dồn tổng
-            // Dùng Number() để đảm bảo cộng số
+            
             totalImpressions += Number(row.impressions) || 0;
             totalEngagement += Number(row.engagement) || 0;
             totalImpressionsUnique += Number(row.impressions_unique) || 0; 
             totalFanRemoves += Number(row.fan_removes) || 0; 
             totalVideoViews += Number(row.video_views) || 0;
+            
+            // === CỘNG DỒN TỔNG ===
+            totalOrganicUnique += Number(row.organic_unique) || 0;
         });
     }
 
-    // Luôn chèn dòng tổng cộng
+    // Render dòng tổng cộng (Sticky Bottom)
     html += `
         <tr class="font-bold bg-gray-100 sticky bottom-0">
             <td class="px-4 py-3">Tổng cộng</td>
             <td id="fp-total-impressions" class="px-4 py-3">${formatNumber(totalImpressions)}</td>
             <td id="fp-total-engagement" class="px-4 py-3">${formatNumber(totalEngagement)}</td>
             <td id="fp-total-impressions-unique" class="px-4 py-3">${formatNumber(totalImpressionsUnique)}</td> 
+            
+            <td id="fp-total-organic-unique" class="px-4 py-3">${formatNumber(totalOrganicUnique)}</td> 
+            
             <td id="fp-total-fan-removes" class="px-4 py-3">${formatNumber(totalFanRemoves)}</td> 
             <td id="fp-total-video-views" class="px-4 py-3">${formatNumber(totalVideoViews)}</td>
         </tr>

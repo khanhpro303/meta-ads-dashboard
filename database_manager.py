@@ -244,6 +244,7 @@ class FactPageMetricsDaily(Base):
     page_impressions_unique = Column(BigInteger, default=0)
     page_fan_removes = Column(BigInteger, default=0)
     page_fan_adds_unique = Column(BigInteger, default=0) # Người like mới unique
+    page_posts_impressions_organic_unique = Column(BigInteger, default=0)
     
     # Thêm Unique Constraint để thực hiện ON CONFLICT
     __table_args__ = (UniqueConstraint('date_key', 'page_id', name='_page_metrics_daily_uc'),)
@@ -270,8 +271,7 @@ class FactPostPerformance(Base):
     lt_post_reactions_like_total = Column(BigInteger, default=0)
     lt_post_impressions = Column(BigInteger, default=0)
     lt_post_clicks = Column(BigInteger, default=0)
-    
-    # (Bạn có thể thêm các cột metric khác ở đây nếu cần)
+    lt_post_impressions_organic_unique = Column(BigInteger, default=0)
     
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -907,7 +907,8 @@ class DatabaseManager:
                     'page_video_views': record.get('page_video_views', 0),
                     'page_impressions_unique': record.get('page_impressions_unique', 0),
                     'page_fan_removes': record.get('page_daily_unfollows_unique', 0),
-                    'page_fan_adds_unique': record.get('page_daily_follows_unique', 0)
+                    'page_fan_adds_unique': record.get('page_daily_follows_unique', 0),
+                    'page_posts_impressions_organic_unique': record.get('page_posts_impressions_organic_unique', 0)
                 })
 
             if not prepared_data:
@@ -926,6 +927,7 @@ class DatabaseManager:
                     'page_impressions_unique': stmt.excluded.page_impressions_unique,
                     'page_fan_removes': stmt.excluded.page_fan_removes,
                     'page_fan_adds_unique': stmt.excluded.page_fan_adds_unique,
+                    'page_posts_impressions_organic_unique': stmt.excluded.page_posts_impressions_organic_unique,
                 }
             )
             
@@ -969,6 +971,7 @@ class DatabaseManager:
                 'lt_post_reactions_like_total': post.get('post_reactions_like_total', 0),
                 'lt_post_impressions': post.get('post_impressions', 0),
                 'lt_post_clicks': post.get('post_clicks', 0),
+                'lt_post_impressions_organic_unique': post.get('post_impressions_organic_unique', 0),
             })
 
         if not prepared_data:
@@ -989,6 +992,7 @@ class DatabaseManager:
                 'lt_post_reactions_like_total': stmt.excluded.lt_post_reactions_like_total,
                 'lt_post_impressions': stmt.excluded.lt_post_impressions,
                 'lt_post_clicks': stmt.excluded.lt_post_clicks,
+                'lt_post_impressions_organic_unique': stmt.excluded.lt_post_impressions_organic_unique,
                 'updated_at': datetime.now()
             }
         )
