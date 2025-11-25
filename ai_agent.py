@@ -1,24 +1,124 @@
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import HumanMessage
 from langchain.tools import tool
+from functools import lru_cache
 from dotenv import load_dotenv
 import os
 import logging
 import datetime
 import requests
 import base64
+import time
+
+import hashlib
+import json
+from langchain.agents.middleware import AgentMiddleware
+from langchain.tools.tool_node import ToolCallRequest
+from langchain.messages import ToolMessage
+from langgraph.types import Command
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 load_dotenv()
 
+class DynamicCacheMiddleware(AgentMiddleware):
+    """Cache động cho bất kỳ tool nào"""
+    
+    def __init__(self, ttl_seconds: int = 300):
+        self.cache = {}
+        self.ttl_seconds = ttl_seconds
+        self.cache_hits = 0
+        self.cache_misses = 0
+    
+    def _get_cache_key(self, tool_name: str, tool_args: dict) -> str:
+        """Tạo key cache từ tool name + arguments"""
+        args_str = json.dumps(tool_args, sort_keys=True)
+        args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:8]
+        return f"{tool_name}:{args_hash}"
+    
+    def _is_cache_valid(self, cache_entry: dict) -> bool:
+        """Kiểm tra cache còn hạn không"""
+        current_time = time.time()
+        return (current_time - cache_entry["timestamp"]) < self.ttl_seconds
+    
+    def wrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler,
+    ) -> ToolMessage | Command:
+        """Intercept mỗi tool call"""
+        tool_name = request.tool_call["name"]
+        tool_args = request.tool_call["args"]
+        
+        # Bỏ qua cache cho image analysis (thay đổi)
+        no_cache_tools = ["analyze_image_from_url"]
+        if tool_name in no_cache_tools:
+            return handler(request)
+        
+        # Tạo cache key
+        cache_key = self._get_cache_key(tool_name, tool_args)
+        
+        # Kiểm tra cache
+        if cache_key in self.cache:
+            cache_entry = self.cache[cache_key]
+            if self._is_cache_valid(cache_entry):
+                # ✅ HIT - Trả kết quả từ cache
+                self.cache_hits += 1
+                logger.info(f"🟢 CACHE HIT: {tool_name} (Hits: {self.cache_hits})")
+                
+                return ToolMessage(
+                    content=cache_entry["result"],
+                    tool_call_id=request.tool_call["id"],
+                    name=tool_name,
+                )
+            else:
+                del self.cache[cache_key]
+        
+        # ❌ MISS - Chạy tool thực tế
+        self.cache_misses += 1
+        logger.info(f"🔴 CACHE MISS: {tool_name} (Misses: {self.cache_misses})")
+        
+        result = handler(request)
+        
+        # Lưu cache
+        if isinstance(result, ToolMessage):
+            self.cache[cache_key] = {
+                "result": result.content,
+                "timestamp": time.time(),
+                "tool_name": tool_name,
+            }
+        
+        return result
+    
+    def get_cache_stats(self) -> dict:
+        """Trả về stats cache"""
+        total = self.cache_hits + self.cache_misses
+        hit_rate = (self.cache_hits / total * 100) if total > 0 else 0
+        return {
+            "total_requests": total,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "cached_items": len(self.cache),
+        }
+
 class AIAgent:
     def __init__(self):
+        # Giới hạn 1 request/6 giây (10 request/phút)
+        rate_limiter = InMemoryRateLimiter(
+            requests_per_second=0.167,  # ~10 requests/phút
+            check_every_n_seconds=0.1,
+            max_bucket_size=2,
+        )
         # Initialize model
-        self.model = init_chat_model("google_genai:gemini-2.5-flash")
+        self.model = init_chat_model(
+            "google_genai:gemini-2.5-flash",
+            rate_limiter=rate_limiter
+            )
 
         # Connect to Postgres
         self.db_url = os.getenv('DATABASE_URL')
@@ -42,39 +142,24 @@ class AIAgent:
         @tool
         def analyze_image_from_url(image_url: str, question: str):
             """
-            Sử dụng công cụ này khi người dùng hỏi về nội dung hình ảnh, màu sắc, hoặc mô tả visual của một bài đăng/quảng cáo.
-            Input:
-            - image_url: Đường dẫn ảnh (bắt đầu bằng http/https) lấy từ database.
-            - question: Câu hỏi cụ thể về bức ảnh (ví dụ: 'Ảnh này có chữ gì?', 'Màu chủ đạo là gì?').
+            Phân tích ảnh mà KHÔNG gọi LLM thêm.
+            Chỉ tải ảnh, không xử lý AI.
             """
             try:
-                # Tải ảnh từ URL (R2 Link)
                 response = requests.get(image_url, stream=True, timeout=10)
                 if response.status_code != 200:
-                    return f"Lỗi: Không thể tải ảnh từ URL {image_url}"
+                    return f"Lỗi: Không thể tải ảnh từ {image_url}"
                 
-                # Mã hóa ảnh sang Base64 để gửi cho Gemini
                 image_data = base64.b64encode(response.content).decode("utf-8")
                 
-                # Gọi model Gemini để nhìn ảnh (Sử dụng chính model hiện tại)
-                # Tạo message chứa cả ảnh và text
-                message = HumanMessage(
-                    content=[
-                        {"type": "text", "text": question},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
-                        },
-                    ]
-                )
-                
-                # Invoke model trực tiếp cho task vision này
-                ai_response = self.model.invoke([message])
-                
-                return f"Về ảnh: {ai_response.content}"
-
+                # ✅ TRẢ VỀ CẤU TRÚC CHO AGENT LÀM VIỆC
+                return {
+                    "image_url": f"data:image/jpeg;base64,{image_data}",
+                    "question": question,
+                    "status": "ready_for_analysis"
+                }
             except Exception as e:
-                return f"Lỗi khi phân tích ảnh: {str(e)}"
+                return f"Lỗi khi xử lý ảnh: {str(e)}"
         
         self.tools = tools_db + [analyze_image_from_url]
 
@@ -103,10 +188,14 @@ class AIAgent:
 
         Sau đó, bạn nên truy vấn schema của các bảng phù hợp nhất.
 
-        Nếu người dùng hỏi về hình ảnh (nội dung, màu sắc, thiết kế), bạn phải:
-           - Bước 1: Viết query SQL để lấy cột chứa URL ảnh (thường là `full_picture_url` hoặc `image_url`).
-           - Bước 2: Lấy URL đó và dùng tool `analyze_image_from_url` để "nhìn" bức ảnh.
-           - Bước 3: Trả lời dựa trên kết quả phân tích ảnh và cùng context của câu hỏi.
+        KHI NGƯỜI DÙNG HỎI VỀ HÌNH ẢNH:
+            1. Dùng SQL tool để lấy bài post có hình ảnh
+            2. Dùng analyze_image_from_url tool để lấy dữ liệu ảnh (base64)
+            3. Nhìn ảnh trực tiếp (AI model của bạn hỗ trợ vision)
+            4. Trả lời dựa trên vision reasoning của LLM
+
+        HỮU DỤNG: Khi bạn nhận được kết quả từ analyze_image_from_url, 
+        hãy xem ảnh trong nội dung của nó (trường "image_url").
 
         Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm.
         Bạn không cần in đậm hay format văn bản gì khi gửi trả lời để tránh hiển thị ***. Đừng quên điều này.
@@ -116,11 +205,15 @@ class AIAgent:
             year=datetime.date.today().year
         )
 
+        # ✅ TẠO MIDDLEWARE CACHE ĐỘNG
+        self.cache_middleware = DynamicCacheMiddleware(ttl_seconds=300)
+
         # Create agent
         self.agent = create_agent(
             self.model,
             self.tools,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            middleware=[self.cache_middleware]
         )
     
     def ask(self, query: str):
@@ -162,7 +255,7 @@ def main():
     try:
         ai = AIAgent()
         response = ai.ask("Bài post nào có nhiều like nhất và ảnh đó nói về cái gì?")
-        print(response)
+        print("".join(response))
     except Exception as e:
         logger.error(f"Lỗi không mong muốn: {e}")
 
