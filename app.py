@@ -1271,27 +1271,41 @@ def handle_chat():
         return jsonify({'error': 'Không có tin nhắn nào được gửi.'}), 400
 
     def generate_stream():
-        """Generator để stream dữ liệu từ AI Agent về client"""
+        """Generator stream dữ liệu SSE an toàn với Heroku Timeout"""
         try:
+            # 1. Gửi ngay một comment SSE để thiết lập kết nối với Heroku
+            # Heroku thấy byte này sẽ reset bộ đếm timeout 30s
+            yield ": start-stream\n\n"
+
+            # 2. Duyệt qua generator của AI
             for chunk in ai_analyst.ask(user_message):
-                # Gói mỗi chunk thành một thông điệp Server-Sent Event (SSE)
-                # Dùng format SSE: data: <JSON payload>\n\n
-                # Nếu bạn muốn stream text đơn giản: yield chunk
-                # Nếu muốn gửi JSON:
-                payload = {'text': chunk}
-                yield f"data: {json.dumps(payload)}\n\n"
+                
+                # chunk bây giờ là dict: {'type': '...', 'content': '...'}
+                
+                if chunk['type'] == 'status':
+                    # TRICK QUAN TRỌNG:
+                    # Gửi trạng thái dưới dạng comment SSE (bắt đầu bằng dấu :) 
+                    # hoặc event riêng để Frontend hiển thị "Loading..."
+                    # Ở đây gửi về data status để có thể hiện lên UI nếu muốn
+                    payload = json.dumps({'status': chunk['content']})
+                    yield f"data: {payload}\n\n"
+                    
+                elif chunk['type'] == 'text':
+                    # Dữ liệu văn bản trả lời thực sự
+                    payload = json.dumps({'text': chunk['content']})
+                    yield f"data: {payload}\n\n"
             
-            # Thông điệp kết thúc (tùy chọn nhưng nên có)
             yield "data: [DONE]\n\n"
             
         except Exception as e:
-            logger.error(f"Lỗi trong quá trình streaming: {e}", exc_info=True)
-            # Gửi thông báo lỗi về client
-            yield f"data: {json.dumps({'error': 'Lỗi server trong quá trình xử lý AI.'})}\n\n"
+            logger.error(f"Lỗi streaming: {e}", exc_info=True)
+            yield f"data: {json.dumps({'error': 'Lỗi xử lý AI.'})}\n\n"
 
-    # Trả về Response sử dụng generator và Content-Type là text/event-stream (SSE)
-    # Đây là điểm mấu chốt để Heroku không timeout
-    return Response(generate_stream(), mimetype='text/event-stream')
+    return Response(
+        generate_stream(), 
+        mimetype='text/event-stream',
+        headers={'X-Accel-Buffering': 'no'} 
+    )
     
 @app.route('/api/refresh_fanpage', methods=['POST'])
 @login_required

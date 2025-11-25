@@ -20,17 +20,16 @@ load_dotenv()
 
 class AIAgent:
     def __init__(self):
-        # Giới hạn 1 request/6 giây (10 request/phút)
+        # Giới hạn request rate
         rate_limiter = InMemoryRateLimiter(
-            requests_per_second=0.8,
+            requests_per_second=0.3,
             check_every_n_seconds=0.1,
             max_bucket_size=10,
         )
         # Initialize model
         self.model = init_chat_model(
             "google_genai:gemini-2.5-flash",
-            rate_limiter=rate_limiter,
-            temperature=0.3
+            rate_limiter=rate_limiter
             )
 
         # Connect to Postgres
@@ -52,6 +51,7 @@ class AIAgent:
         tools_db = toolkit.get_tools()
 
         @lru_cache(maxsize=50) # Cache 50 request gần nhất
+        
         def _fetch_image_base64(url: str):
             response = requests.get(url, stream=True, timeout=10)
             if response.status_code != 200:
@@ -93,20 +93,18 @@ class AIAgent:
         sau đó xem kết quả truy vấn và trả lời. Trừ khi người dùng 
         chỉ định một số lượng ví dụ cụ thể mà họ muốn lấy, luôn giới hạn truy vấn tối đa {top_k} kết quả.
 
-        Bạn có thể sắp xếp kết quả theo cột phù hợp để trả về kết quả thú vị nhất
-        trong cơ sở dữ liệu. Không bao giờ truy vấn tất cả các cột từ một bảng cụ thể,
-        chỉ yêu cầu các cột có liên quan cho câu hỏi.
-
         Bạn PHẢI kiểm tra lại truy vấn của mình trước khi thực hiện nó. Nếu bạn gặp bất kỳ lỗi trong khi
         thực hiện một truy vấn, viết lại truy vấn và thử lại.
 
         KHÔNG thực hiện bất kỳ câu lệnh DML nào (CHÈN, CẬP NHẬT, XÓA, THẢ, v.v.) đối với cơ sở dữ liệu.
 
         QUY TRÌNH LÀM VIỆC:
-        1. Nếu cần dữ liệu số: Kiểm tra bảng -> Query schema -> Query dữ liệu.
-        2. Nếu cần xem ảnh: 
+        1. Nếu chỉ cần dữ liệu số: Kiểm tra bảng -> Query schema -> Query dữ liệu. Bạn có thể sắp xếp kết quả theo cột phù hợp để trả về kết quả thú vị nhất
+        trong cơ sở dữ liệu. Không bao giờ truy vấn tất cả các cột từ một bảng cụ thể,
+        chỉ yêu cầu các cột có liên quan cho câu hỏi.
+        2. Nếu cần xem và phân tích ảnh: 
            - Query lấy URL ảnh từ DB.
-           - Dùng tool `analyze_image_from_url` với URL đó. Tool này sẽ trả về dữ liệu ảnh.
+           - Dùng tool `analyze_image_from_url` với URL đó. Tool này sẽ trả về dữ liệu ảnh. 
            - Bạn tự sử dụng khả năng vision của mình để trả lời câu hỏi dựa trên dữ liệu ảnh nhận được.
 
         Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm.
@@ -129,41 +127,50 @@ class AIAgent:
         Hàm nhận câu hỏi và trả về từng phần (chunk) của câu trả lời.
         Nó hoạt động như một Generator, chỉ yield phần text có sẵn.
         """
+        # Bước 1: Yield ngay lập tức một trạng thái để báo hiệu bắt đầu (phá vỡ im lặng ban đầu)
+        yield {"type": "status", "content": "Đang suy nghĩ..."}
+        
         for step in self.agent.stream(
             {"messages": [{"role": "user", "content": query}]},
             stream_mode="values",
         ):
-            # Lấy tin nhắn mới nhất trong bước
             last_message = step["messages"][-1]
-            
-            # --- LOGIC KIỂM TRA VÀ TRUY CẬP AN TOÀN ---
-            
-            # 1. Kiểm tra thuộc tính 'content' có tồn tại không
-            if not hasattr(last_message, 'content'):
+
+            # 1. Xử lý khi AI quyết định gọi Tool (SQL hoặc Vision)
+            if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                # Thay vì continue (im lặng), ta báo cho người dùng biết AI đang làm gì
+                tool_name = last_message.tool_calls[0]['name']
+                if "sql" in tool_name.lower():
+                    yield {"type": "status", "content": "Đang truy vấn cơ sở dữ liệu..."}
+                elif "image" in tool_name.lower():
+                    yield {"type": "status", "content": "Đang phân tích nội dung ảnh..."}
                 continue
-                
+
+            # 2. Bỏ qua tin nhắn không phải của AI
+            if last_message.type != "ai":
+                continue
+
+            # 3. Lấy nội dung Final Answer
             content = last_message.content
             
-            # 2. Kiểm tra nếu 'content' là một LIST (cấu trúc phức tạp, ví dụ: Final Answer)
-            if isinstance(content, list) and content and content[0].get("text"):
-                # Lấy nội dung văn bản từ MessagePart đầu tiên
-                text_content = content[0].get("text")
-                yield text_content
+            # Xử lý content (List hoặc String)
+            if isinstance(content, list) and content:
+                for part in content:
+                    if isinstance(part, dict) and "text" in part:
+                         yield {"type": "text", "content": part["text"]}
+                    elif isinstance(part, str):
+                         yield {"type": "text", "content": part}
                 
-            # 3. Kiểm tra nếu 'content' là một STRING (cấu trúc đơn giản, ví dụ: Tool Call)
-            # Bỏ qua các bước là Tool Call hoặc Tool Message
-            # Vì chúng ta chỉ muốn hiển thị câu trả lời cuối cùng của AI.
-            elif isinstance(content, str):
-                # Bạn có thể chọn yield nội dung string nếu nó là tin nhắn quan trọng
-                # NHƯNG: Đối với Chatbot, chúng ta chỉ muốn hiển thị FINAL ANSWER, 
-                # nên tốt nhất là bỏ qua các bước trung gian (như SQL Query, Tool Output).
-                pass
+            elif isinstance(content, str) and content.strip():
+                yield {"type": "text", "content": content}
 
 def main():
     try:
         ai = AIAgent()
-        response = ai.ask("Bài post nào có nhiều like nhất và ảnh đó nói về cái gì?")
-        print("".join(response))
+        response = ai.ask("Tuần này chi tiêu bao nhiêu tiền?")
+        for chunk in response:
+            print(chunk, end="", flush=True) # flush=True để đẩy text ra màn hình ngay lập tức
+        print() # Xuống dòng khi kết thúc
     except Exception as e:
         logger.error(f"Lỗi không mong muốn: {e}")
 
