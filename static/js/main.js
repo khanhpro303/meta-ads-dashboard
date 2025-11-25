@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             loadingBubble.innerHTML = `
                                                 <div class="flex items-center gap-3">
                                                     <div class="typing-indicator flex space-x-1">
-                                                        <span>•</span><span>•</span><span>•</span>
+                                                        
                                                     </div>
                                                     <span class="ai-status-text text-sm text-gray-500 italic animate-pulse">
                                                         ${payload.status}
