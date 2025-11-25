@@ -22,15 +22,15 @@ class AIAgent:
     def __init__(self):
         # Giới hạn 1 request/6 giây (10 request/phút)
         rate_limiter = InMemoryRateLimiter(
-            requests_per_second=0.167,  # ~10 requests/phút
+            requests_per_second=0.8,
             check_every_n_seconds=0.1,
-            max_bucket_size=2,
+            max_bucket_size=10,
         )
         # Initialize model
         self.model = init_chat_model(
             "google_genai:gemini-2.5-flash",
             rate_limiter=rate_limiter,
-            temperature=0
+            temperature=0.3
             )
 
         # Connect to Postgres
