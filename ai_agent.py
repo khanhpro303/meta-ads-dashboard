@@ -2,10 +2,13 @@ from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
+from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 import os
 import logging
 import datetime
+import requests
+import base64
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,8 +35,49 @@ class AIAgent:
 
         # Create toolkit with tools
         toolkit = SQLDatabaseToolkit(db=self.db, llm=self.model)
-        self.tools = toolkit.get_tools()
-        for tool in self.tools:
+        tools = toolkit.get_tools()
+
+        # ĐỊNH NGHĨA VISION TOOL (CÔNG CỤ NHÌN ẢNH)
+        @tool
+        def analyze_image_from_url(image_url: str, question: str):
+            """
+            Sử dụng công cụ này khi người dùng hỏi về nội dung hình ảnh, màu sắc, hoặc mô tả visual của một bài đăng/quảng cáo.
+            Input:
+            - image_url: Đường dẫn ảnh (bắt đầu bằng http/https) lấy từ database.
+            - question: Câu hỏi cụ thể về bức ảnh (ví dụ: 'Ảnh này có chữ gì?', 'Màu chủ đạo là gì?').
+            """
+            try:
+                # Tải ảnh từ URL (R2 Link)
+                response = requests.get(image_url, stream=True, timeout=10)
+                if response.status_code != 200:
+                    return f"Lỗi: Không thể tải ảnh từ URL {image_url}"
+                
+                # Mã hóa ảnh sang Base64 để gửi cho Gemini
+                image_data = base64.b64encode(response.content).decode("utf-8")
+                
+                # Gọi model Gemini để nhìn ảnh (Sử dụng chính model hiện tại)
+                # Tạo message chứa cả ảnh và text
+                message = HumanMessage(
+                    content=[
+                        {"type": "text", "text": question},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                        },
+                    ]
+                )
+                
+                # Invoke model trực tiếp cho task vision này
+                ai_response = self.model.invoke([message])
+                
+                return f"Về ảnh: {ai_response.content}"
+
+            except Exception as e:
+                return f"Lỗi khi phân tích ảnh: {str(e)}"
+        
+        self.tools = tools + [analyze_image_from_url]
+
+        for tool in tools:
             logger.info(f"{tool.name}: {tool.description}\n")
         
         # Create system prompt
@@ -57,6 +101,11 @@ class AIAgent:
         có thể truy vấn những gì. KHÔNG bỏ qua bước này.
 
         Sau đó, bạn nên truy vấn schema của các bảng phù hợp nhất.
+
+        Nếu người dùng hỏi về hình ảnh (nội dung, màu sắc, thiết kế), bạn phải:
+           - Bước 1: Viết query SQL để lấy cột chứa URL ảnh (thường là `full_picture_url` hoặc `image_url`).
+           - Bước 2: Lấy URL đó và dùng tool `analyze_image_from_url` để "nhìn" bức ảnh.
+           - Bước 3: Trả lời dựa trên kết quả phân tích ảnh và cùng context của câu hỏi.
 
         Bạn PHẢI luôn trả lời bằng tiếng Việt. Văn phong chuyên nghiệp, đi vào trọng tâm.
         Bạn không cần in đậm hay format văn bản gì khi gửi trả lời để tránh hiển thị ***. Đừng quên điều này.
@@ -111,7 +160,7 @@ class AIAgent:
 def main():
     try:
         ai = AIAgent()
-        response = ai.ask("Chi tiêu hôm qua là bao nhiêu?")
+        response = ai.ask("Bài post nào có nhiều like nhất và ảnh đó nói về cái gì?")
         print(response)
     except Exception as e:
         logger.error(f"Lỗi không mong muốn: {e}")
